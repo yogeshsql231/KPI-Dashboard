@@ -6,9 +6,10 @@ declare(strict_types=1);
  * Main Delivery / OMS Dashboard (Damascus-KPI).
  *
  * Mirrors the operations delivery scorecard: order/fulfilment KPI cards, stat
- * tiles, and a full filter bar (date range, warehouse, customer, item, PO,
- * carrier, SO status, pick status). Reads ONLY from the local delivery_lines
- * cache, which the SAP ETL refreshes. No user login yet (per current scope).
+ * tiles, and a filter bar (date range, warehouse, SO, PO, carrier, SO status,
+ * pick status). Auto-refreshes every 30 min (plus a manual Refresh button).
+ * Reads ONLY from the local delivery_lines cache, which the SAP ETL refreshes.
+ * No user login yet (per current scope).
  */
 
 require_once __DIR__ . '/../config/config.php';
@@ -46,7 +47,7 @@ $byDate = [];
 $byWarehouse = [];
 $topCustomers = [];
 $zeroDelivery = [];
-$opts = ['warehouse' => [], 'customer' => [], 'item' => [], 'carrier' => [], 'so_status' => [], 'pick_status' => []];
+$opts = ['warehouse' => [], 'carrier' => [], 'so_status' => [], 'pick_status' => []];
 $lastRefreshed = null;
 $filters = DeliveryFilters::fromRequest($_GET);
 
@@ -110,6 +111,9 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Auto-refresh the dashboard every 30 minutes (1800s). Reloads the same
+         URL, so the active filters are preserved. -->
+    <meta http-equiv="refresh" content="1800">
     <title>KPI Dashboard · Delivery / OMS</title>
     <link rel="stylesheet" href="assets/style.css">
 </head>
@@ -135,9 +139,11 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
         </div>
         <?php
         selectFilter('warehouse', 'Warehouse', $opts['warehouse'], $filters->warehouse, 'All Warehouses');
-        selectFilter('customer', 'Customer', $opts['customer'], $filters->customer, 'All Customers');
-        selectFilter('item', 'Item', $opts['item'], $filters->item, 'All Items');
         ?>
+        <div class="filter">
+            <label for="so">SO Number</label>
+            <input type="text" id="so" name="so" placeholder="contains…" value="<?= e($filters->salesOrder) ?>">
+        </div>
         <div class="filter">
             <label for="po">PO Number</label>
             <input type="text" id="po" name="po" placeholder="contains…" value="<?= e($filters->po) ?>">
@@ -150,6 +156,7 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
         <div class="filter-actions">
             <button type="submit" class="btn btn-primary">Apply</button>
             <a class="btn btn-reset" href="dashboard.php">Reset</a>
+            <button type="button" class="btn btn-refresh" onclick="window.location.reload()" title="Reload the latest data now (auto-refreshes every 30 min)">Refresh Data</button>
         </div>
     </form>
 

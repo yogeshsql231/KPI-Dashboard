@@ -13,8 +13,7 @@ final class DeliveryFilters
         public readonly ?string $fromDate = null,
         public readonly ?string $toDate = null,
         public readonly ?string $warehouse = null,
-        public readonly ?string $customer = null,
-        public readonly ?string $item = null,
+        public readonly ?string $salesOrder = null,
         public readonly ?string $po = null,
         public readonly ?string $carrier = null,
         public readonly ?string $soStatus = null,
@@ -29,8 +28,7 @@ final class DeliveryFilters
             self::cleanDate($q['from_date'] ?? null),
             self::cleanDate($q['to_date'] ?? null),
             self::cleanText($q['warehouse'] ?? null),
-            self::cleanText($q['customer'] ?? null),
-            self::cleanText($q['item'] ?? null),
+            self::cleanText($q['so'] ?? null),
             self::cleanText($q['po'] ?? null),
             self::cleanText($q['carrier'] ?? null),
             self::cleanText($q['so_status'] ?? null),
@@ -61,13 +59,9 @@ final class DeliveryFilters
             $conds[] = 'warehouse = ?';
             $params[] = $this->warehouse;
         }
-        if ($this->customer !== null) {
-            $conds[] = 'customer_name = ?';
-            $params[] = $this->customer;
-        }
-        if ($this->item !== null) {
-            $conds[] = 'item_code = ?';
-            $params[] = $this->item;
+        if ($this->salesOrder !== null) {
+            $conds[] = 'sales_order LIKE ?';
+            $params[] = '%' . $this->salesOrder . '%';
         }
         if ($this->po !== null) {
             $conds[] = 'po_number LIKE ?';

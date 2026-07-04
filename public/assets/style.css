@@ -108,6 +108,8 @@ body {
 .btn-primary:hover { background: #1e40af; }
 .btn-reset { background: #fff; color: var(--ink); border-color: var(--border); }
 .btn-reset:hover { background: var(--bg); }
+.btn-refresh { background: #0f766e; color: #fff; }
+.btn-refresh:hover { background: #0c5d56; }
 
 .cards {
     display: grid;
