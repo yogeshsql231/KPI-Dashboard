@@ -1,0 +1,19 @@
+# Secrets / environment
+.env
+*.env.local
+
+# PHP
+/vendor/
+composer.lock
+
+# Logs & caches
+*.log
+/logs/
+/cache/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
