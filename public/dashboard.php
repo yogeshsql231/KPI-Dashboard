@@ -45,6 +45,7 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="refresh" content="1800">
     <title>KPI Dashboard · Customer Service / OMS</title>
     <link rel="stylesheet" href="assets/style.css">
 </head>
@@ -52,6 +53,7 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
 <header class="topbar">
     <div class="brand">KPI Dashboard</div>
     <div class="subtitle">Customer Service / Order Management</div>
+    <button class="btn-refresh" onclick="location.reload()">Refresh Data</button>
 </header>
 
 <main class="container">
