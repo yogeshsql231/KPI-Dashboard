@@ -13,6 +13,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../src/KpiRepository.php';
+require_once __DIR__ . '/../src/Filters.php';
 
 /** HTML-escape helper. */
 function e(mixed $v): string
@@ -45,15 +46,20 @@ $byDate = [];
 $topCustomers = [];
 $topSkus = [];
 $pareto = [];
+$customerOptions = [];
+$itemOptions = [];
+$filters = Filters::fromRequest($_GET);
 
 try {
     $repo = new KpiRepository(Database::connection());
-    $summary = $repo->summary();
+    $summary = $repo->summary($filters);
     $targets = $repo->targets();
-    $byDate = $repo->byDate();
-    $topCustomers = $repo->topCustomers(10);
-    $topSkus = $repo->topSkus(10);
-    $pareto = $repo->complaintsPareto();
+    $byDate = $repo->byDate($filters);
+    $topCustomers = $repo->topCustomers($filters, 10);
+    $topSkus = $repo->topSkus($filters, 10);
+    $pareto = $repo->complaintsPareto($filters);
+    $customerOptions = $repo->customerOptions();
+    $itemOptions = $repo->itemOptions();
 } catch (Throwable $ex) {
     $error = 'Unable to load KPI data. Check the database connection in your .env file.';
 }
@@ -90,6 +96,43 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
 </header>
 
 <main class="container">
+    <form class="filters" method="get" action="dashboard.php">
+        <div class="filter">
+            <label for="from_date">From date</label>
+            <input type="date" id="from_date" name="from_date" value="<?= e($filters->fromDate) ?>">
+        </div>
+        <div class="filter">
+            <label for="to_date">To date</label>
+            <input type="date" id="to_date" name="to_date" value="<?= e($filters->toDate) ?>">
+        </div>
+        <div class="filter">
+            <label for="customer">Customer</label>
+            <select id="customer" name="customer">
+                <option value="">All customers</option>
+                <?php foreach ($customerOptions as $opt): ?>
+                    <option value="<?= e($opt) ?>"<?= $filters->customer === $opt ? ' selected' : '' ?>><?= e($opt) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="filter">
+            <label for="item">Item #</label>
+            <select id="item" name="item">
+                <option value="">All items</option>
+                <?php foreach ($itemOptions as $opt): ?>
+                    <option value="<?= e($opt) ?>"<?= $filters->item === $opt ? ' selected' : '' ?>><?= e($opt) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="filter">
+            <label for="po">PO number</label>
+            <input type="text" id="po" name="po" placeholder="contains…" value="<?= e($filters->po) ?>">
+        </div>
+        <div class="filter-actions">
+            <button type="submit" class="btn btn-primary">Apply</button>
+            <a class="btn btn-reset" href="dashboard.php">Reset</a>
+        </div>
+    </form>
+
     <?php if ($error !== null): ?>
         <div class="alert"><?= e($error) ?></div>
     <?php else: ?>

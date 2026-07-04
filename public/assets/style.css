@@ -41,6 +41,46 @@ body {
     border-radius: 8px;
 }
 
+.filters {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 18px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 14px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+}
+.filters .filter { display: flex; flex-direction: column; gap: 4px; }
+.filters label { font-size: 12px; color: var(--muted); font-weight: 600; }
+.filters input, .filters select {
+    padding: 7px 9px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 14px;
+    background: #fff;
+    color: var(--ink);
+    min-width: 150px;
+}
+.filters select { max-width: 240px; }
+.filter-actions { display: flex; gap: 8px; margin-left: auto; }
+.btn {
+    display: inline-block;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    border: 1px solid transparent;
+}
+.btn-primary { background: var(--brand); color: #fff; }
+.btn-primary:hover { background: #1e40af; }
+.btn-reset { background: #fff; color: var(--ink); border-color: var(--border); }
+.btn-reset:hover { background: var(--bg); }
+
 .cards {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
