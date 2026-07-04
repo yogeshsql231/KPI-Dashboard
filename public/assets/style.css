@@ -177,7 +177,11 @@ body {
     padding: 16px 18px;
     box-shadow: 0 1px 2px rgba(0,0,0,.04);
 }
-.panel h2 { font-size: 15px; margin: 0 0 12px; }
+.panel h2 { font-size: 14px; font-weight: 600; margin: 0 0 14px; color: #334155; letter-spacing: .2px; }
+.chart-grid .panel { display: flex; flex-direction: column; padding: 18px 20px; box-shadow: 0 1px 3px rgba(15,23,42,.06); }
+.chart-grid .panel h2 { padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.chart-grid .panel canvas { flex: 1 1 auto; }
+.chart-grid .panel .empty { margin: auto 0; }
 
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }

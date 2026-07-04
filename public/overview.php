@@ -237,84 +237,133 @@ $chartData = [
 
     <script>
         const DATA = <?= json_encode($chartData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-        const BLUE = '#2563eb', GREEN = '#0f766e', AMBER = '#d97706', SLATE = '#64748b';
-        const usd = (v) => '$' + Number(v).toLocaleString();
+        const HAS_AMOUNT = <?= $hasAmount ? 'true' : 'false' ?>;
 
-        function comboBarLine(canvasId, labels, barLabel, barData, lineLabel, lineData) {
+        // --- shared palette + global look ------------------------------------
+        const BLUE = '#3b82f6', TEAL = '#0d9488', AMBER = '#f59e0b', SLATE = '#64748b';
+        const GRID = 'rgba(148,163,184,.18)';
+        const PIE = ['#3b82f6', '#0d9488', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#84cc16', '#ec4899'];
+
+        Chart.defaults.font.family = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+        Chart.defaults.font.size = 12;
+        Chart.defaults.color = '#475569';
+        Chart.defaults.plugins.legend.labels.usePointStyle = true;
+        Chart.defaults.plugins.legend.labels.boxWidth = 8;
+        Chart.defaults.plugins.legend.labels.boxHeight = 8;
+        Chart.defaults.plugins.legend.labels.padding = 14;
+        Chart.defaults.plugins.tooltip.backgroundColor = '#0f172a';
+        Chart.defaults.plugins.tooltip.padding = 10;
+        Chart.defaults.plugins.tooltip.cornerRadius = 6;
+        Chart.defaults.plugins.tooltip.boxPadding = 6;
+        Chart.defaults.maintainAspectRatio = false;
+        Chart.defaults.responsive = true;
+
+        const usd = (v) => '$' + Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 });
+        const clip = (s, n = 20) => (s && s.length > n ? s.slice(0, n - 1) + '…' : s);
+
+        // Rounded, evenly-spaced bars.
+        const bar = (label, data, color, extra = {}) => Object.assign({
+            type: 'bar', label, data, backgroundColor: color,
+            borderRadius: 6, borderSkipped: false, maxBarThickness: 34, categoryPercentage: 0.7, barPercentage: 0.8
+        }, extra);
+
+        // count bars + $ line on a second axis — the $ series only appears when
+        // real dollar data is loaded, so an all-zero flat line never shows.
+        function countAndMoney(canvasId, labels, countLabel, countData, moneyLabel, moneyData, color) {
             const el = document.getElementById(canvasId);
             if (!el) return;
+            const datasets = [bar(countLabel, countData, color, { yAxisID: 'y' })];
+            if (HAS_AMOUNT) {
+                datasets.push({
+                    type: 'line', label: moneyLabel, data: moneyData, yAxisID: 'y1',
+                    borderColor: AMBER, backgroundColor: AMBER, borderWidth: 2,
+                    pointRadius: 3, pointHoverRadius: 5, tension: 0.35, fill: false
+                });
+            }
             new Chart(el, {
-                data: {
-                    labels,
-                    datasets: [
-                        { type: 'bar', label: barLabel, data: barData, backgroundColor: BLUE, yAxisID: 'y' },
-                        { type: 'line', label: lineLabel, data: lineData, borderColor: GREEN, backgroundColor: GREEN, yAxisID: 'y1', tension: 0.3 }
-                    ]
-                },
+                data: { labels, datasets },
                 options: {
-                    responsive: true, maintainAspectRatio: false,
                     interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: HAS_AMOUNT },
+                        tooltip: { callbacks: { label: (c) => c.dataset.yAxisID === 'y1'
+                            ? ' ' + c.dataset.label + ': ' + usd(c.parsed.y)
+                            : ' ' + c.dataset.label + ': ' + Number(c.parsed.y).toLocaleString() } }
+                    },
                     scales: {
-                        y:  { position: 'left',  beginAtZero: true, title: { display: true, text: barLabel } },
-                        y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: lineLabel },
+                        x:  { grid: { display: false }, ticks: { maxRotation: 0, autoSkipPadding: 12 } },
+                        y:  { position: 'left', beginAtZero: true, border: { display: false },
+                              grid: { color: GRID }, ticks: { precision: 0 } },
+                        y1: { position: 'right', display: HAS_AMOUNT, beginAtZero: true,
+                              border: { display: false }, grid: { drawOnChartArea: false },
                               ticks: { callback: (v) => usd(v) } }
                     }
                 }
             });
         }
 
-        function groupedBar(canvasId, labels, ordersData, amountData) {
+        // Horizontal ranked bars (customers). Ranked by orders; $ shown in the
+        // tooltip so one clean bar series stays readable even with long names.
+        function rankedCustomers(canvasId, labels, ordersData, amountData, color) {
             const el = document.getElementById(canvasId);
             if (!el) return;
             new Chart(el, {
-                type: 'bar',
-                data: {
-                    labels,
-                    datasets: [
-                        { label: 'Orders', data: ordersData, backgroundColor: BLUE, yAxisID: 'y' },
-                        { label: 'Value ($)', data: amountData, backgroundColor: AMBER, yAxisID: 'y1' }
-                    ]
-                },
+                data: { labels, datasets: [bar('Orders', ordersData, color, { maxBarThickness: 22 })] },
                 options: {
-                    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: {
+                            title: (items) => labels[items[0].dataIndex],
+                            label: (c) => {
+                                const rows = [' Orders: ' + Number(c.parsed.x).toLocaleString()];
+                                if (HAS_AMOUNT && amountData[c.dataIndex]) rows.push(' Value: ' + usd(amountData[c.dataIndex]));
+                                return rows;
+                            }
+                        } }
+                    },
                     scales: {
-                        y:  {},
-                        x:  { beginAtZero: true }
+                        x: { beginAtZero: true, border: { display: false }, grid: { color: GRID }, ticks: { precision: 0 } },
+                        y: { grid: { display: false }, ticks: { callback: function (v) { return clip(this.getLabelForValue(v)); } } }
                     }
                 }
             });
         }
 
         // 1. SO performance (# bars + $ line)
-        comboBarLine('chartSo', DATA.so.labels, 'Orders', DATA.so.orders, 'Order $', DATA.so.amount);
-        // 2. Top customers (orders + $)
-        groupedBar('chartTop', DATA.top.labels, DATA.top.orders, DATA.top.amount);
-        // 3. Retail customers (orders + $)
-        groupedBar('chartRetail', DATA.retail.labels, DATA.retail.orders, DATA.retail.amount);
+        countAndMoney('chartSo', DATA.so.labels, 'Orders', DATA.so.orders, 'Order $', DATA.so.amount, BLUE);
+        // 2. Top customers
+        rankedCustomers('chartTop', DATA.top.labels, DATA.top.orders, DATA.top.amount, BLUE);
+        // 3. Retail customers
+        rankedCustomers('chartRetail', DATA.retail.labels, DATA.retail.orders, DATA.retail.amount, TEAL);
         // 4. Delivery by warehouse (qty)
         (function () {
             const el = document.getElementById('chartWh');
             if (!el) return;
             new Chart(el, {
-                type: 'bar',
-                data: { labels: DATA.wh.labels, datasets: [{ label: 'Delivered Qty', data: DATA.wh.delivered, backgroundColor: GREEN }] },
-                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+                data: { labels: DATA.wh.labels, datasets: [bar('Delivered Qty', DATA.wh.delivered, TEAL)] },
+                options: {
+                    plugins: { legend: { display: false },
+                        tooltip: { callbacks: { label: (c) => ' ' + Number(c.parsed.y).toLocaleString() + ' units' } } },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { beginAtZero: true, border: { display: false }, grid: { color: GRID },
+                             ticks: { callback: (v) => Number(v).toLocaleString() } }
+                    }
+                }
             });
         })();
         // 5. Complaints (# bars + lost $ line)
-        comboBarLine('chartComplaints', DATA.comMonth.labels, 'Complaints', DATA.comMonth.count, 'Lost $', DATA.comMonth.lost);
+        countAndMoney('chartComplaints', DATA.comMonth.labels, 'Complaints', DATA.comMonth.count, 'Lost $', DATA.comMonth.lost, '#ef4444');
         // 6. Complaint reasons (doughnut)
         (function () {
             const el = document.getElementById('chartReasons');
             if (!el) return;
             new Chart(el, {
                 type: 'doughnut',
-                data: {
-                    labels: DATA.comReason.labels,
-                    datasets: [{ data: DATA.comReason.count,
-                        backgroundColor: [BLUE, GREEN, AMBER, SLATE, '#9333ea', '#dc2626', '#0891b2', '#65a30d'] }]
-                },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
+                data: { labels: DATA.comReason.labels,
+                    datasets: [{ data: DATA.comReason.count, backgroundColor: PIE, borderWidth: 2, borderColor: '#fff', hoverOffset: 6 }] },
+                options: { cutout: '58%', plugins: { legend: { position: 'right' } } }
             });
         })();
     </script>
