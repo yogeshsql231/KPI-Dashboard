@@ -13,30 +13,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../src/KpiRepository.php';
-
-/** HTML-escape helper. */
-function e(mixed $v): string
-{
-    return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
-}
-
-/** Format a 0..1 ratio as a percentage. */
-function pct(mixed $v, int $dp = 2): string
-{
-    if ($v === null || $v === '') {
-        return '—';
-    }
-    return number_format(((float) $v) * 100, $dp) . '%';
-}
-
-/** Format an integer with thousands separators. */
-function num(mixed $v): string
-{
-    if ($v === null || $v === '') {
-        return '—';
-    }
-    return number_format((float) $v);
-}
+require_once __DIR__ . '/../src/ViewHelper.php';
 
 $error = null;
 $summary = [];
@@ -56,18 +33,6 @@ try {
     $pareto = $repo->complaintsPareto();
 } catch (Throwable $ex) {
     $error = 'Unable to load KPI data. Check the database connection in your .env file.';
-}
-
-/** Decide the status color for a "higher is better" ratio metric. */
-function ratioClass(?float $value, ?float $target): string
-{
-    if ($value === null || $target === null) {
-        return 'neutral';
-    }
-    if ($value >= $target) {
-        return 'good';
-    }
-    return $value >= $target * 0.95 ? 'warn' : 'bad';
 }
 
 $otif = isset($summary['otif']) ? (float) $summary['otif'] : null;
@@ -91,53 +56,53 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
 
 <main class="container">
     <?php if ($error !== null): ?>
-        <div class="alert"><?= e($error) ?></div>
+        <div class="alert"><?= ViewHelper::e($error) ?></div>
     <?php else: ?>
 
     <section class="cards">
-        <?php $c = ratioClass($otif, (float) $otifTarget); ?>
+        <?php $c = ViewHelper::ratioClass($otif, (float) $otifTarget); ?>
         <div class="card <?= $c ?>">
             <div class="card-label">OTIF (On-Time In-Full)</div>
-            <div class="card-value"><?= pct($otif) ?></div>
-            <div class="card-target">Target <?= pct((float) $otifTarget, 0) ?></div>
+            <div class="card-value"><?= ViewHelper::pct($otif) ?></div>
+            <div class="card-target">Target <?= ViewHelper::pct((float) $otifTarget, 0) ?></div>
         </div>
 
-        <?php $c = ratioClass($ifr, (float) $ifrTarget); ?>
+        <?php $c = ViewHelper::ratioClass($ifr, (float) $ifrTarget); ?>
         <div class="card <?= $c ?>">
             <div class="card-label">Item Fill Rate</div>
-            <div class="card-value"><?= pct($ifr) ?></div>
-            <div class="card-target">Target <?= pct((float) $ifrTarget, 0) ?></div>
+            <div class="card-value"><?= ViewHelper::pct($ifr) ?></div>
+            <div class="card-target">Target <?= ViewHelper::pct((float) $ifrTarget, 0) ?></div>
         </div>
 
         <div class="card <?= ($summary['shipped_short_cases'] ?? 0) > 0 ? 'warn' : 'good' ?>">
             <div class="card-label">Shipped Short</div>
-            <div class="card-value"><?= num($summary['shipped_short_cases'] ?? 0) ?></div>
+            <div class="card-value"><?= ViewHelper::num($summary['shipped_short_cases'] ?? 0) ?></div>
             <div class="card-target">cases · target 0</div>
         </div>
 
         <div class="card neutral">
             <div class="card-label">Avg Lead Time</div>
-            <div class="card-value"><?= $summary['avg_lead_time_days'] !== null ? number_format((float) $summary['avg_lead_time_days'], 1) : '—' ?></div>
+            <div class="card-value"><?= $summary['avg_lead_time_days'] !== null ? number_format((float) $summary['avg_lead_time_days'], 1) : "\u{2014}" ?></div>
             <div class="card-target">days (order → ship)</div>
         </div>
 
         <div class="card neutral">
             <div class="card-label">Customer Complaints</div>
-            <div class="card-value"><?= num($summary['total_complaints'] ?? 0) ?></div>
+            <div class="card-value"><?= ViewHelper::num($summary['total_complaints'] ?? 0) ?></div>
             <div class="card-target">total logged</div>
         </div>
 
         <div class="card neutral">
             <div class="card-label">PO Revisions</div>
-            <div class="card-value"><?= num($summary['total_po_revisions'] ?? 0) ?></div>
+            <div class="card-value"><?= ViewHelper::num($summary['total_po_revisions'] ?? 0) ?></div>
             <div class="card-target">customer-requested</div>
         </div>
     </section>
 
     <section class="meta">
-        <span><strong><?= num($summary['total_lines'] ?? 0) ?></strong> order lines</span>
-        <span><strong><?= num($summary['total_pos'] ?? 0) ?></strong> POs</span>
-        <span><strong><?= num($summary['total_qty_shipped'] ?? 0) ?></strong> cases shipped</span>
+        <span><strong><?= ViewHelper::num($summary['total_lines'] ?? 0) ?></strong> order lines</span>
+        <span><strong><?= ViewHelper::num($summary['total_pos'] ?? 0) ?></strong> POs</span>
+        <span><strong><?= ViewHelper::num($summary['total_qty_shipped'] ?? 0) ?></strong> cases shipped</span>
     </section>
 
     <div class="grid">
@@ -150,11 +115,11 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
                 <tbody>
                 <?php foreach ($byDate as $r): ?>
                     <tr>
-                        <td><?= e($r['ship_date']) ?></td>
-                        <td class="num"><?= num($r['line_count']) ?></td>
-                        <td class="num"><?= pct($r['otif']) ?></td>
-                        <td class="num"><?= pct($r['item_fill_rate']) ?></td>
-                        <td class="num"><?= num($r['shipped_short_cases']) ?></td>
+                        <td><?= ViewHelper::e($r['ship_date']) ?></td>
+                        <td class="num"><?= ViewHelper::num($r['line_count']) ?></td>
+                        <td class="num"><?= ViewHelper::pct($r['otif']) ?></td>
+                        <td class="num"><?= ViewHelper::pct($r['item_fill_rate']) ?></td>
+                        <td class="num"><?= ViewHelper::num($r['shipped_short_cases']) ?></td>
                     </tr>
                 <?php endforeach; ?>
                 <?php if ($byDate === []): ?>
@@ -171,8 +136,8 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
                 <tbody>
                 <?php foreach ($pareto as $r): ?>
                     <tr>
-                        <td><?= e($r['concern_type']) ?></td>
-                        <td class="num"><?= num($r['complaint_count']) ?></td>
+                        <td><?= ViewHelper::e($r['concern_type']) ?></td>
+                        <td class="num"><?= ViewHelper::num($r['complaint_count']) ?></td>
                     </tr>
                 <?php endforeach; ?>
                 <?php if ($pareto === []): ?>
@@ -189,8 +154,8 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
                 <tbody>
                 <?php foreach ($topCustomers as $r): ?>
                     <tr>
-                        <td><?= e($r['customer']) ?></td>
-                        <td class="num"><?= num($r['qty_shipped']) ?></td>
+                        <td><?= ViewHelper::e($r['customer']) ?></td>
+                        <td class="num"><?= ViewHelper::num($r['qty_shipped']) ?></td>
                     </tr>
                 <?php endforeach; ?>
                 <?php if ($topCustomers === []): ?>
@@ -207,8 +172,8 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
                 <tbody>
                 <?php foreach ($topSkus as $r): ?>
                     <tr>
-                        <td><?= e($r['item_number']) ?></td>
-                        <td class="num"><?= num($r['qty_shipped']) ?></td>
+                        <td><?= ViewHelper::e($r['item_number']) ?></td>
+                        <td class="num"><?= ViewHelper::num($r['qty_shipped']) ?></td>
                     </tr>
                 <?php endforeach; ?>
                 <?php if ($topSkus === []): ?>

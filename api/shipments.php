@@ -21,7 +21,9 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/Response.php';
+require_once __DIR__ . '/../src/ShipmentRepository.php';
 require_once __DIR__ . '/../src/Validator.php';
 
 // --- CORS / security headers (adjust the allowed origin for production) ---
@@ -74,7 +76,7 @@ function handleGet(PDO $pdo): never
  */
 function handlePost(PDO $pdo): never
 {
-    requireApiKey();
+    Auth::requireApiKey();
 
     // Read and decode the JSON body.
     $raw = file_get_contents('php://input') ?: '';
@@ -113,52 +115,13 @@ function handlePost(PDO $pdo): never
         'comments'       => null,
     ]);
 
-    // Prepared statement with named placeholders — values are bound, never
-    // concatenated, so the input can never alter the SQL structure.
-    $sql = 'INSERT INTO order_shipments
-                (ship_date, po_number, customer, ship_via, item_number,
-                 qty_requested, qty_shipped, order_date, requested_date,
-                 actual_date, is_sample, comments)
-            VALUES
-                (:ship_date, :po_number, :customer, :ship_via, :item_number,
-                 :qty_requested, :qty_shipped, :order_date, :requested_date,
-                 :actual_date, :is_sample, :comments)';
-
     try {
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([
-            ':ship_date'      => $clean['ship_date'],
-            ':po_number'      => $clean['po_number'],
-            ':customer'       => $clean['customer'],
-            ':ship_via'       => $clean['ship_via'],
-            ':item_number'    => $clean['item_number'],
-            ':qty_requested'  => $clean['qty_requested'],
-            ':qty_shipped'    => $clean['qty_shipped'],
-            ':order_date'     => $clean['order_date'],
-            ':requested_date' => $clean['requested_date'],
-            ':actual_date'    => $clean['actual_date'],
-            ':is_sample'      => $clean['is_sample'],
-            ':comments'       => $clean['comments'],
-        ]);
+        $repo = new ShipmentRepository($pdo);
+        $id   = $repo->insert($clean);
     } catch (PDOException $e) {
         error_log('[api/shipments] insert failed: ' . $e->getMessage());
         Response::error('Failed to save the shipment.', 500);
     }
 
-    Response::success(['id' => (int) $pdo->lastInsertId()], 201);
-}
-
-/**
- * Optional shared-secret guard for write operations.
- */
-function requireApiKey(): void
-{
-    $expected = env('API_KEY');
-    if ($expected === null || $expected === '') {
-        return; // disabled (local dev)
-    }
-    $provided = $_SERVER['HTTP_X_API_KEY'] ?? '';
-    if (!is_string($provided) || !hash_equals((string) $expected, $provided)) {
-        Response::error('Unauthorized.', 401);
-    }
+    Response::success(['id' => $id], 201);
 }
