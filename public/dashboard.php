@@ -55,6 +55,7 @@ try {
     $topSkus = $repo->topSkus(10);
     $pareto = $repo->complaintsPareto();
 } catch (Throwable $ex) {
+    error_log('[dashboard] KPI data load failed: ' . $ex->getMessage());
     $error = 'Unable to load KPI data. Check the database connection in your .env file.';
 }
 

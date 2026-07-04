@@ -61,7 +61,12 @@ try {
     exit(2);
 }
 
-$target = $dryRun ? null : Database::connection();
+try {
+    $target = $dryRun ? null : Database::connection();
+} catch (Throwable $e) {
+    fwrite(STDERR, '[etl] target database connection failed: ' . $e->getMessage() . "\n");
+    exit(2);
+}
 
 $upsertSql = 'INSERT INTO order_shipments
     (ship_date, po_number, customer, ship_via, item_number,
@@ -168,7 +173,8 @@ function normDate(mixed $v): ?string
     }
     try {
         return (new DateTime((string) $v))->format('Y-m-d');
-    } catch (Throwable) {
+    } catch (Throwable $e) {
+        fwrite(STDERR, '[etl] unparseable date value: ' . var_export($v, true) . "\n");
         return null;
     }
 }

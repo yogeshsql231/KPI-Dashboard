@@ -52,16 +52,21 @@ switch ($method) {
  */
 function handleGet(PDO $pdo): never
 {
-    $summary = $pdo->query('SELECT * FROM vw_kpi_summary')->fetch() ?: [];
+    try {
+        $summary = $pdo->query('SELECT * FROM vw_kpi_summary')->fetch() ?: [];
 
-    $stmt = $pdo->query(
-        'SELECT id, ship_date, po_number, customer, item_number,
-                qty_requested, qty_shipped
-         FROM order_shipments
-         ORDER BY id DESC
-         LIMIT 20'
-    );
-    $recent = $stmt->fetchAll();
+        $stmt = $pdo->query(
+            'SELECT id, ship_date, po_number, customer, item_number,
+                    qty_requested, qty_shipped
+             FROM order_shipments
+             ORDER BY id DESC
+             LIMIT 20'
+        );
+        $recent = $stmt->fetchAll();
+    } catch (PDOException $e) {
+        error_log('[api/shipments] GET query failed: ' . $e->getMessage());
+        Response::error('Failed to retrieve shipment data.', 500);
+    }
 
     Response::success([
         'summary' => $summary,
