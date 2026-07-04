@@ -92,6 +92,8 @@ function handlePost(PDO $pdo): never
       ->required('customer')->string('customer', 255)
       ->required('item_number')->string('item_number', 64)
       ->string('ship_via', 32)
+      ->string('warehouse', 128)
+      ->string('sales_order', 64)
       ->integer('qty_requested', 0)
       ->integer('qty_shipped', 0)
       ->date('order_date')
@@ -106,6 +108,8 @@ function handlePost(PDO $pdo): never
 
     $clean = $v->validated([
         'ship_via'       => null,
+        'warehouse'      => null,
+        'sales_order'    => null,
         'qty_requested'  => 0,
         'qty_shipped'    => 0,
         'order_date'     => null,

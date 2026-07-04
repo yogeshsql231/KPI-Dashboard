@@ -29,13 +29,13 @@ final class ShipmentRepository
         if ($this->insertStmt === null) {
             $this->insertStmt = $this->pdo->prepare(
                 'INSERT INTO order_shipments
-                    (ship_date, po_number, customer, ship_via, item_number,
-                     qty_requested, qty_shipped, order_date, requested_date,
-                     actual_date, is_sample, comments)
+                    (ship_date, po_number, customer, ship_via, warehouse,
+                     sales_order, item_number, qty_requested, qty_shipped,
+                     order_date, requested_date, actual_date, is_sample, comments)
                  VALUES
-                    (:ship_date, :po_number, :customer, :ship_via, :item_number,
-                     :qty_requested, :qty_shipped, :order_date, :requested_date,
-                     :actual_date, :is_sample, :comments)'
+                    (:ship_date, :po_number, :customer, :ship_via, :warehouse,
+                     :sales_order, :item_number, :qty_requested, :qty_shipped,
+                     :order_date, :requested_date, :actual_date, :is_sample, :comments)'
             );
         }
 
@@ -44,6 +44,8 @@ final class ShipmentRepository
             ':po_number'      => $data['po_number'],
             ':customer'       => $data['customer'],
             ':ship_via'       => $data['ship_via'],
+            ':warehouse'      => $data['warehouse'] ?? null,
+            ':sales_order'    => $data['sales_order'] ?? null,
             ':item_number'    => $data['item_number'],
             ':qty_requested'  => $data['qty_requested'],
             ':qty_shipped'    => $data['qty_shipped'],
@@ -67,18 +69,20 @@ final class ShipmentRepository
         if ($this->upsertStmt === null) {
             $this->upsertStmt = $this->pdo->prepare(
                 'INSERT INTO order_shipments
-                    (ship_date, po_number, customer, ship_via, item_number,
-                     qty_requested, qty_shipped, order_date, requested_date,
-                     actual_date, source_system, source_key)
+                    (ship_date, po_number, customer, ship_via, warehouse,
+                     sales_order, item_number, qty_requested, qty_shipped,
+                     order_date, requested_date, actual_date, source_system, source_key)
                  VALUES
-                    (:ship_date, :po_number, :customer, :ship_via, :item_number,
-                     :qty_requested, :qty_shipped, :order_date, :requested_date,
-                     :actual_date, :source_system, :source_key)
+                    (:ship_date, :po_number, :customer, :ship_via, :warehouse,
+                     :sales_order, :item_number, :qty_requested, :qty_shipped,
+                     :order_date, :requested_date, :actual_date, :source_system, :source_key)
                  ON DUPLICATE KEY UPDATE
                      ship_date      = VALUES(ship_date),
                      po_number      = VALUES(po_number),
                      customer       = VALUES(customer),
                      ship_via       = VALUES(ship_via),
+                     warehouse      = VALUES(warehouse),
+                     sales_order    = VALUES(sales_order),
                      item_number    = VALUES(item_number),
                      qty_requested  = VALUES(qty_requested),
                      qty_shipped    = VALUES(qty_shipped),
@@ -93,6 +97,8 @@ final class ShipmentRepository
             ':po_number'      => $data['po_number'],
             ':customer'       => $data['customer'],
             ':ship_via'       => $data['ship_via'],
+            ':warehouse'      => $data['warehouse'] ?? null,
+            ':sales_order'    => $data['sales_order'] ?? null,
             ':item_number'    => $data['item_number'],
             ':qty_requested'  => $data['qty_requested'],
             ':qty_shipped'    => $data['qty_shipped'],

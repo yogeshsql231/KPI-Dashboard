@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS order_shipments (
     po_number      VARCHAR(64)    NOT NULL,
     customer       VARCHAR(255)   NOT NULL,
     ship_via       VARCHAR(32)    NULL,
+    warehouse      VARCHAR(128)   NULL,
+    sales_order    VARCHAR(64)    NULL,
     item_number    VARCHAR(64)    NOT NULL,
     qty_requested  INT            NOT NULL DEFAULT 0,
     qty_shipped    INT            NOT NULL DEFAULT 0,
@@ -66,7 +68,9 @@ CREATE TABLE IF NOT EXISTS order_shipments (
     KEY idx_shipments_ship_date (ship_date),
     KEY idx_shipments_customer  (customer),
     KEY idx_shipments_po        (po_number),
-    KEY idx_shipments_item      (item_number)
+    KEY idx_shipments_item      (item_number),
+    KEY idx_shipments_warehouse (warehouse),
+    KEY idx_shipments_sales_order (sales_order)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
@@ -179,20 +183,28 @@ WHERE is_sample = 0
 GROUP BY ship_date
 ORDER BY ship_date;
 
--- Qty shipped by customer (top movers).
-CREATE OR REPLACE VIEW vw_customer_shipment AS
-SELECT customer, SUM(qty_shipped) AS qty_shipped
+-- Qty shipped by warehouse.
+CREATE OR REPLACE VIEW vw_warehouse_shipment AS
+SELECT
+    COALESCE(warehouse, 'Unassigned') AS warehouse,
+    COUNT(*)                          AS line_count,
+    SUM(qty_shipped)                  AS qty_shipped
 FROM order_shipments
 WHERE is_sample = 0
-GROUP BY customer
+GROUP BY COALESCE(warehouse, 'Unassigned')
 ORDER BY qty_shipped DESC;
 
--- Qty shipped by SKU (top movers).
-CREATE OR REPLACE VIEW vw_sku_shipment AS
-SELECT item_number, SUM(qty_shipped) AS qty_shipped
+-- Qty shipped by sales order (top movers).
+CREATE OR REPLACE VIEW vw_sales_order_shipment AS
+SELECT
+    COALESCE(sales_order, 'N/A') AS sales_order,
+    customer,
+    ship_date,
+    COUNT(*)                     AS line_count,
+    SUM(qty_shipped)             AS qty_shipped
 FROM order_shipments
 WHERE is_sample = 0
-GROUP BY item_number
+GROUP BY COALESCE(sales_order, 'N/A'), customer, ship_date
 ORDER BY qty_shipped DESC;
 
 -- Complaints pareto by concern type.

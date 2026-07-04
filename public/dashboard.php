@@ -19,8 +19,8 @@ $error = null;
 $summary = [];
 $targets = [];
 $byDate = [];
-$topCustomers = [];
-$topSkus = [];
+$byWarehouse = [];
+$bySalesOrder = [];
 $pareto = [];
 
 try {
@@ -28,8 +28,8 @@ try {
     $summary = $repo->summary();
     $targets = $repo->targets();
     $byDate = $repo->byDate();
-    $topCustomers = $repo->topCustomers(10);
-    $topSkus = $repo->topSkus(10);
+    $byWarehouse = $repo->byWarehouse(10);
+    $bySalesOrder = $repo->bySalesOrder(10);
     $pareto = $repo->complaintsPareto();
 } catch (Throwable $ex) {
     $error = 'Unable to load KPI data. Check the database connection in your .env file.';
@@ -148,36 +148,39 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
         </section>
 
         <section class="panel">
-            <h2>Top Customers by Cases Shipped</h2>
+            <h2>Shipments by Warehouse</h2>
             <table>
-                <thead><tr><th>Customer</th><th>Cases</th></tr></thead>
+                <thead><tr><th>Warehouse</th><th>Lines</th><th>Cases</th></tr></thead>
                 <tbody>
-                <?php foreach ($topCustomers as $r): ?>
+                <?php foreach ($byWarehouse as $r): ?>
                     <tr>
-                        <td><?= ViewHelper::e($r['customer']) ?></td>
+                        <td><?= ViewHelper::e($r['warehouse']) ?></td>
+                        <td class="num"><?= ViewHelper::num($r['line_count']) ?></td>
                         <td class="num"><?= ViewHelper::num($r['qty_shipped']) ?></td>
                     </tr>
                 <?php endforeach; ?>
-                <?php if ($topCustomers === []): ?>
-                    <tr><td colspan="2" class="empty">No data</td></tr>
+                <?php if ($byWarehouse === []): ?>
+                    <tr><td colspan="3" class="empty">No data</td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>
         </section>
 
         <section class="panel">
-            <h2>Top SKUs by Cases Shipped</h2>
+            <h2>Top Sales Orders</h2>
             <table>
-                <thead><tr><th>Item #</th><th>Cases</th></tr></thead>
+                <thead><tr><th>SO #</th><th>Customer</th><th>Date</th><th>Cases</th></tr></thead>
                 <tbody>
-                <?php foreach ($topSkus as $r): ?>
+                <?php foreach ($bySalesOrder as $r): ?>
                     <tr>
-                        <td><?= ViewHelper::e($r['item_number']) ?></td>
+                        <td><?= ViewHelper::e($r['sales_order']) ?></td>
+                        <td><?= ViewHelper::e($r['customer']) ?></td>
+                        <td><?= ViewHelper::e($r['ship_date']) ?></td>
                         <td class="num"><?= ViewHelper::num($r['qty_shipped']) ?></td>
                     </tr>
                 <?php endforeach; ?>
-                <?php if ($topSkus === []): ?>
-                    <tr><td colspan="2" class="empty">No data</td></tr>
+                <?php if ($bySalesOrder === []): ?>
+                    <tr><td colspan="4" class="empty">No data</td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>
