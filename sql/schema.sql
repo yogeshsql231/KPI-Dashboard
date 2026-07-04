@@ -26,6 +26,11 @@
 SET NAMES utf8mb4;
 SET time_zone = '+00:00';
 
+-- Make the script self-contained so it works even if no DB is pre-selected.
+CREATE DATABASE IF NOT EXISTS kpi_dashboard
+    CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE kpi_dashboard;
+
 -- ---------------------------------------------------------------------------
 -- Reference: customers (optional lookup; shipments also store the raw name so
 -- data loads never fail on an unknown customer).
