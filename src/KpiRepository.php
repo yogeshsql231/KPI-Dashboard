@@ -39,18 +39,18 @@ final class KpiRepository
     }
 
     /** @return array<int, array<string, mixed>> */
-    public function topCustomers(int $limit = 10): array
+    public function byWarehouse(int $limit = 10): array
     {
-        $stmt = $this->pdo->prepare('SELECT * FROM vw_customer_shipment LIMIT :lim');
+        $stmt = $this->pdo->prepare('SELECT * FROM vw_warehouse_shipment LIMIT :lim');
         $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
         $stmt->execute();
         return $stmt->fetchAll();
     }
 
     /** @return array<int, array<string, mixed>> */
-    public function topSkus(int $limit = 10): array
+    public function bySalesOrder(int $limit = 10): array
     {
-        $stmt = $this->pdo->prepare('SELECT * FROM vw_sku_shipment LIMIT :lim');
+        $stmt = $this->pdo->prepare('SELECT * FROM vw_sales_order_shipment LIMIT :lim');
         $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
         $stmt->execute();
         return $stmt->fetchAll();

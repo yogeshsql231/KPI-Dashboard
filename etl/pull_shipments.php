@@ -24,6 +24,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/source_db.php';
+require_once __DIR__ . '/../src/DataHelper.php';
+require_once __DIR__ . '/../src/ShipmentRepository.php';
 
 if (PHP_SAPI !== 'cli') {
     fwrite(STDERR, "This script must be run from the command line.\n");
@@ -62,28 +64,7 @@ try {
 }
 
 $target = $dryRun ? null : Database::connection();
-
-$upsertSql = 'INSERT INTO order_shipments
-    (ship_date, po_number, customer, ship_via, item_number,
-     qty_requested, qty_shipped, order_date, requested_date, actual_date,
-     source_system, source_key)
-   VALUES
-    (:ship_date, :po_number, :customer, :ship_via, :item_number,
-     :qty_requested, :qty_shipped, :order_date, :requested_date, :actual_date,
-     :source_system, :source_key)
-   ON DUPLICATE KEY UPDATE
-     ship_date = VALUES(ship_date),
-     po_number = VALUES(po_number),
-     customer = VALUES(customer),
-     ship_via = VALUES(ship_via),
-     item_number = VALUES(item_number),
-     qty_requested = VALUES(qty_requested),
-     qty_shipped = VALUES(qty_shipped),
-     order_date = VALUES(order_date),
-     requested_date = VALUES(requested_date),
-     actual_date = VALUES(actual_date)';
-
-$upsert = $target?->prepare($upsertSql);
+$repo   = $target !== null ? new ShipmentRepository($target) : null;
 
 $read = 0;
 $written = 0;
@@ -120,18 +101,18 @@ try {
         }
 
         $params = [
-            ':ship_date'      => normDate($row['ship_date'] ?? null),
-            ':po_number'      => strval($row['po_number'] ?? ''),
-            ':customer'       => strval($row['customer'] ?? ''),
-            ':ship_via'       => nullify($row['ship_via'] ?? null),
-            ':item_number'    => strval($row['item_number'] ?? ''),
-            ':qty_requested'  => (int) ($row['qty_requested'] ?? 0),
-            ':qty_shipped'    => (int) ($row['qty_shipped'] ?? 0),
-            ':order_date'     => normDate($row['order_date'] ?? null),
-            ':requested_date' => normDate($row['requested_date'] ?? null),
-            ':actual_date'    => normDate($row['actual_date'] ?? null),
-            ':source_system'  => $source,
-            ':source_key'     => $key,
+            'ship_date'      => DataHelper::normDate($row['ship_date'] ?? null),
+            'po_number'      => strval($row['po_number'] ?? ''),
+            'customer'       => strval($row['customer'] ?? ''),
+            'ship_via'       => DataHelper::nullify($row['ship_via'] ?? null),
+            'item_number'    => strval($row['item_number'] ?? ''),
+            'qty_requested'  => (int) ($row['qty_requested'] ?? 0),
+            'qty_shipped'    => (int) ($row['qty_shipped'] ?? 0),
+            'order_date'     => DataHelper::normDate($row['order_date'] ?? null),
+            'requested_date' => DataHelper::normDate($row['requested_date'] ?? null),
+            'actual_date'    => DataHelper::normDate($row['actual_date'] ?? null),
+            'source_system'  => $source,
+            'source_key'     => $key,
         ];
 
         if ($dryRun) {
@@ -139,7 +120,7 @@ try {
                 echo '[etl] would upsert: ' . json_encode($params, JSON_UNESCAPED_SLASHES) . "\n";
             }
         } else {
-            $upsert->execute($params);
+            $repo->upsert($params);
             $written++;
         }
 
@@ -159,26 +140,3 @@ try {
 
 echo "[etl] done. read=$read written=$written skipped=$errors" . ($dryRun ? ' (dry-run: nothing written)' : '') . "\n";
 exit(0);
-
-/** Normalise a source date/datetime to YYYY-MM-DD or null. */
-function normDate(mixed $v): ?string
-{
-    if ($v === null || $v === '') {
-        return null;
-    }
-    try {
-        return (new DateTime((string) $v))->format('Y-m-d');
-    } catch (Throwable) {
-        return null;
-    }
-}
-
-/** Empty string -> null, else trimmed string. */
-function nullify(mixed $v): ?string
-{
-    if ($v === null) {
-        return null;
-    }
-    $s = trim((string) $v);
-    return $s === '' ? null : $s;
-}
