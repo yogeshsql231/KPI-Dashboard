@@ -90,13 +90,47 @@ prepared statements — input can never alter the SQL.
 ### `GET /api/shipments.php`
 Returns the KPI summary and the 20 most recent lines.
 
+## Pulling data from PRIMSBM / PRODHANA (ETL)
+
+The source databases live on the company LAN, so the ETL runs **on the local
+server** (the XAMPP box), not from the cloud. It is **read-only** against the
+source (SELECT only) and writes only into the local MySQL `order_shipments`
+table — nothing is ever written back to PRIMSBM/PRODHANA.
+
+```bash
+php etl/pull_shipments.php --source=PRIMSBM            # pull + upsert
+php etl/pull_shipments.php --source=PRIMSBM --dry-run  # preview, writes nothing
+php etl/pull_shipments.php --source=PRODHANA
+```
+
+1. Set the source connection vars in `.env` (`PRIMSBM_DB_*`, `PRODHANA_DB_*`).
+   Use a **read-only** login (not `sa`).
+2. Fill in the source query so its output columns match the KPI fields:
+   `etl/queries/primsbm_shipments.sql` and `etl/queries/prodhana_shipments.sql`
+   (required aliases: `source_key, ship_date, po_number, customer, ship_via,
+   item_number, qty_requested, qty_shipped, order_date, requested_date,
+   actual_date`). `source_key` must be a stable unique id per line — the ETL
+   upserts on `(source_system, source_key)` so re-runs never duplicate rows.
+3. First time on an existing DB, apply `sql/migrations/001_add_source_columns.sql`.
+
+### Enabling the SQL Server driver on XAMPP (Windows)
+1. Download Microsoft's [`pdo_sqlsrv`](https://learn.microsoft.com/sql/connect/php/download-drivers-php-sql-server)
+   DLL matching your PHP version/thread-safety, drop it in `xampp\php\ext\`.
+2. Add `extension=php_pdo_sqlsrv_XX.dll` to `xampp\php\php.ini`, restart Apache.
+3. Install the [ODBC Driver for SQL Server](https://learn.microsoft.com/sql/connect/odbc/download-odbc-driver-for-sql-server).
+4. Verify: `php -m | findstr sqlsrv`.
+
+For **PRODHANA (SAP HANA)** use the HANA ODBC driver and set an ODBC DSN, then
+`PRODHANA_DB_DRIVER=odbc` with `PRODHANA_DB_NAME=<DSN name>`.
+
 ## Security notes
 - Credentials only via environment / `.env` (never hard-coded; `.env` is gitignored).
 - PDO with `ERRMODE_EXCEPTION` and `EMULATE_PREPARES = false` (true server-side prepared statements).
+- ETL is read-only on source systems; use a SELECT-only DB login.
 - Every write uses bound parameters; every dashboard output is HTML-escaped.
 - Optional `X-API-Key` shared-secret guard on writes.
 
 ## Roadmap
-- Connect PRIMS (`RajDB_CLF` / `SP_2025SAP_DeliveryDetailReport`) and PRODHANA feeds (ETL or REST).
+- Fill in the PRIMSBM / PRODHANA source queries and schedule the ETL (cron / Task Scheduler).
 - Additional dashboards from the requirements doc (Production, Quality, Warehouse, Procurement…).
 - Authentication / RBAC when required.

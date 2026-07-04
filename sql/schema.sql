@@ -56,10 +56,13 @@ CREATE TABLE IF NOT EXISTS order_shipments (
     actual_date    DATE           NULL,   -- actual pick-up / delivery date
     is_sample      TINYINT(1)     NOT NULL DEFAULT 0,
     comments       VARCHAR(255)   NULL,
+    source_system  VARCHAR(32)    NULL,   -- e.g. PRIMSBM, PRODHANA, API
+    source_key     VARCHAR(128)   NULL,   -- natural key from the source row (for idempotent ETL upserts)
     created_at     TIMESTAMP      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at     TIMESTAMP      NOT NULL DEFAULT CURRENT_TIMESTAMP
                                   ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
+    UNIQUE KEY uq_shipments_source (source_system, source_key),
     KEY idx_shipments_ship_date (ship_date),
     KEY idx_shipments_customer  (customer),
     KEY idx_shipments_po        (po_number),
