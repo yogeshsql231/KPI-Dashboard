@@ -3,17 +3,18 @@
 declare(strict_types=1);
 
 /**
- * Main KPI Dashboard - Customer Service / Order Management.
+ * Main Delivery / OMS Dashboard (Damascus-KPI).
  *
- * Renders the first set of Customer Service KPIs (OTIF, Item Fill Rate,
- * Shipped Short, Lead Time, Complaints, PO Revisions) straight from the
- * database views. No user login yet (per current scope).
+ * Mirrors the operations delivery scorecard: order/fulfilment KPI cards, stat
+ * tiles, and a full filter bar (date range, warehouse, customer, item, PO,
+ * carrier, SO status, pick status). Reads ONLY from the local delivery_lines
+ * cache, which the SAP ETL refreshes. No user login yet (per current scope).
  */
 
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
-require_once __DIR__ . '/../src/KpiRepository.php';
-require_once __DIR__ . '/../src/Filters.php';
+require_once __DIR__ . '/../src/DeliveryRepository.php';
+require_once __DIR__ . '/../src/DeliveryFilters.php';
 
 /** HTML-escape helper. */
 function e(mixed $v): string
@@ -41,92 +42,111 @@ function num(mixed $v): string
 
 $error = null;
 $summary = [];
-$targets = [];
 $byDate = [];
+$byWarehouse = [];
 $topCustomers = [];
-$topSkus = [];
-$pareto = [];
-$customerOptions = [];
-$itemOptions = [];
-$filters = Filters::fromRequest($_GET);
+$zeroDelivery = [];
+$opts = ['warehouse' => [], 'customer' => [], 'item' => [], 'carrier' => [], 'so_status' => [], 'pick_status' => []];
+$lastRefreshed = null;
+$filters = DeliveryFilters::fromRequest($_GET);
 
 try {
-    $repo = new KpiRepository(Database::connection());
+    $repo = new DeliveryRepository(Database::connection());
     $summary = $repo->summary($filters);
-    $targets = $repo->targets();
     $byDate = $repo->byDate($filters);
+    $byWarehouse = $repo->byWarehouse($filters);
     $topCustomers = $repo->topCustomers($filters, 10);
-    $topSkus = $repo->topSkus($filters, 10);
-    $pareto = $repo->complaintsPareto($filters);
-    $customerOptions = $repo->customerOptions();
-    $itemOptions = $repo->itemOptions();
+    $zeroDelivery = $repo->zeroDelivery($filters, 15);
+    foreach (array_keys($opts) as $k) {
+        $opts[$k] = $repo->options($k);
+    }
+    $lastRefreshed = $repo->lastRefreshed();
 } catch (Throwable $ex) {
-    $error = 'Unable to load KPI data. Check the database connection in your .env file.';
+    $error = 'Unable to load delivery data. Import sql/delivery_dashboard.sql + sql/delivery_seed.sql and check your .env database connection.';
 }
 
-/** Decide the status color for a "higher is better" ratio metric. */
-function ratioClass(?float $value, ?float $target): string
+$fillRate = isset($summary['fill_rate']) ? (float) $summary['fill_rate'] : null;
+$otif = isset($summary['otif_rate']) ? (float) $summary['otif_rate'] : null;
+$late = isset($summary['late_rate']) ? (float) $summary['late_rate'] : null;
+$short = isset($summary['short_rate']) ? (float) $summary['short_rate'] : null;
+
+/** Colour a "higher is better" ratio against a target. */
+function goodHigh(?float $v, float $target): string
 {
-    if ($value === null || $target === null) {
+    if ($v === null) {
         return 'neutral';
     }
-    if ($value >= $target) {
-        return 'good';
-    }
-    return $value >= $target * 0.95 ? 'warn' : 'bad';
+    return $v >= $target ? 'good' : ($v >= $target * 0.9 ? 'warn' : 'bad');
 }
 
-$otif = isset($summary['otif']) ? (float) $summary['otif'] : null;
-$ifr = isset($summary['item_fill_rate']) ? (float) $summary['item_fill_rate'] : null;
-$otifTarget = $targets['otif'] ?? 0.98;
-$ifrTarget = $targets['item_fill_rate'] ?? 0.98;
+/** Colour a "lower is better" ratio against a ceiling. */
+function goodLow(?float $v, float $ceiling): string
+{
+    if ($v === null) {
+        return 'neutral';
+    }
+    return $v <= $ceiling ? 'good' : ($v <= $ceiling * 1.5 ? 'warn' : 'bad');
+}
+
+/**
+ * Render a <select> filter with an "All" option.
+ *
+ * @param array<int, string> $options
+ */
+function selectFilter(string $name, string $label, array $options, ?string $current, string $allLabel): void
+{
+    echo '<div class="filter"><label for="' . e($name) . '">' . e($label) . '</label>';
+    echo '<select id="' . e($name) . '" name="' . e($name) . '">';
+    echo '<option value="">' . e($allLabel) . '</option>';
+    foreach ($options as $opt) {
+        $sel = $current === $opt ? ' selected' : '';
+        echo '<option value="' . e($opt) . '"' . $sel . '>' . e($opt) . '</option>';
+    }
+    echo '</select></div>';
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>KPI Dashboard · Customer Service / OMS</title>
+    <title>KPI Dashboard · Delivery / OMS</title>
     <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
 <header class="topbar">
     <div class="brand">KPI Dashboard</div>
-    <div class="subtitle">Customer Service / Order Management</div>
+    <div class="subtitle">Delivery / Order Management</div>
+    <nav class="topnav">
+        <a href="dashboard.php" class="active">Delivery</a>
+        <a href="dashboard_cs.php">Customer Service</a>
+    </nav>
 </header>
 
 <main class="container">
     <form class="filters" method="get" action="dashboard.php">
         <div class="filter">
-            <label for="from_date">From date</label>
+            <label for="from_date">From Date</label>
             <input type="date" id="from_date" name="from_date" value="<?= e($filters->fromDate) ?>">
         </div>
         <div class="filter">
-            <label for="to_date">To date</label>
+            <label for="to_date">To Date</label>
             <input type="date" id="to_date" name="to_date" value="<?= e($filters->toDate) ?>">
         </div>
+        <?php
+        selectFilter('warehouse', 'Warehouse', $opts['warehouse'], $filters->warehouse, 'All Warehouses');
+        selectFilter('customer', 'Customer', $opts['customer'], $filters->customer, 'All Customers');
+        selectFilter('item', 'Item', $opts['item'], $filters->item, 'All Items');
+        ?>
         <div class="filter">
-            <label for="customer">Customer</label>
-            <select id="customer" name="customer">
-                <option value="">All customers</option>
-                <?php foreach ($customerOptions as $opt): ?>
-                    <option value="<?= e($opt) ?>"<?= $filters->customer === $opt ? ' selected' : '' ?>><?= e($opt) ?></option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <div class="filter">
-            <label for="item">Item #</label>
-            <select id="item" name="item">
-                <option value="">All items</option>
-                <?php foreach ($itemOptions as $opt): ?>
-                    <option value="<?= e($opt) ?>"<?= $filters->item === $opt ? ' selected' : '' ?>><?= e($opt) ?></option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <div class="filter">
-            <label for="po">PO number</label>
+            <label for="po">PO Number</label>
             <input type="text" id="po" name="po" placeholder="contains…" value="<?= e($filters->po) ?>">
         </div>
+        <?php
+        selectFilter('carrier', 'Carrier', $opts['carrier'], $filters->carrier, 'All Carriers');
+        selectFilter('so_status', 'SO Status', $opts['so_status'], $filters->soStatus, 'All');
+        selectFilter('pick_status', 'Pick Status', $opts['pick_status'], $filters->pickStatus, 'All');
+        ?>
         <div class="filter-actions">
             <button type="submit" class="btn btn-primary">Apply</button>
             <a class="btn btn-reset" href="dashboard.php">Reset</a>
@@ -138,69 +158,101 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
     <?php else: ?>
 
     <section class="cards">
-        <?php $c = ratioClass($otif, (float) $otifTarget); ?>
+        <div class="card neutral">
+            <div class="card-label">Total Orders</div>
+            <div class="card-value"><?= num($summary['total_orders'] ?? 0) ?></div>
+            <div class="card-target">unique sales orders</div>
+        </div>
+        <div class="card good">
+            <div class="card-label">Delivered Qty</div>
+            <div class="card-value"><?= num($summary['delivered_qty'] ?? 0) ?></div>
+            <div class="card-target">mixed units</div>
+        </div>
+        <div class="card warn">
+            <div class="card-label">Released Qty</div>
+            <div class="card-value"><?= num($summary['released_qty'] ?? 0) ?></div>
+            <div class="card-target">mixed units</div>
+        </div>
+        <?php $c = goodHigh($fillRate, 0.95); ?>
         <div class="card <?= $c ?>">
-            <div class="card-label">OTIF (On-Time In-Full)</div>
+            <div class="card-label">Fill Rate</div>
+            <div class="card-value"><?= pct($fillRate) ?></div>
+            <div class="card-target">delivered ÷ ordered</div>
+        </div>
+        <div class="card neutral">
+            <div class="card-label">Picked Qty</div>
+            <div class="card-value"><?= num($summary['pick_qty'] ?? 0) ?></div>
+            <div class="card-target">mixed units</div>
+        </div>
+        <?php $c = goodHigh($otif, 0.95); ?>
+        <div class="card <?= $c ?>">
+            <div class="card-label">OTIF %</div>
             <div class="card-value"><?= pct($otif) ?></div>
-            <div class="card-target">Target <?= pct((float) $otifTarget, 0) ?></div>
+            <div class="card-target">on-time in-full</div>
         </div>
-
-        <?php $c = ratioClass($ifr, (float) $ifrTarget); ?>
+        <?php $c = goodLow($late, 0.05); ?>
         <div class="card <?= $c ?>">
-            <div class="card-label">Item Fill Rate</div>
-            <div class="card-value"><?= pct($ifr) ?></div>
-            <div class="card-target">Target <?= pct((float) $ifrTarget, 0) ?></div>
+            <div class="card-label">Late Order %</div>
+            <div class="card-value"><?= pct($late) ?></div>
+            <div class="card-target">delivered late</div>
         </div>
-
-        <div class="card <?= ($summary['shipped_short_cases'] ?? 0) > 0 ? 'warn' : 'good' ?>">
-            <div class="card-label">Shipped Short</div>
-            <div class="card-value"><?= num($summary['shipped_short_cases'] ?? 0) ?></div>
-            <div class="card-target">cases · target 0</div>
-        </div>
-
-        <div class="card neutral">
-            <div class="card-label">Avg Lead Time</div>
-            <div class="card-value"><?= $summary['avg_lead_time_days'] !== null ? number_format((float) $summary['avg_lead_time_days'], 1) : '—' ?></div>
-            <div class="card-target">days (order → ship)</div>
-        </div>
-
-        <div class="card neutral">
-            <div class="card-label">Customer Complaints</div>
-            <div class="card-value"><?= num($summary['total_complaints'] ?? 0) ?></div>
-            <div class="card-target">total logged</div>
-        </div>
-
-        <div class="card neutral">
-            <div class="card-label">PO Revisions</div>
-            <div class="card-value"><?= num($summary['total_po_revisions'] ?? 0) ?></div>
-            <div class="card-target">customer-requested</div>
+        <?php $c = goodLow($short, 0.02); ?>
+        <div class="card <?= $c ?>">
+            <div class="card-label">Short Shipment %</div>
+            <div class="card-value"><?= pct($short) ?></div>
+            <div class="card-target">shipped short</div>
         </div>
     </section>
 
-    <section class="meta">
-        <span><strong><?= num($summary['total_lines'] ?? 0) ?></strong> order lines</span>
-        <span><strong><?= num($summary['total_pos'] ?? 0) ?></strong> POs</span>
-        <span><strong><?= num($summary['total_qty_shipped'] ?? 0) ?></strong> cases shipped</span>
+    <section class="stats">
+        <div class="stat"><div class="stat-label">Unique PO</div><div class="stat-value"><?= num($summary['unique_po'] ?? 0) ?></div><div class="stat-note">customer POs (always unique)</div></div>
+        <div class="stat"><div class="stat-label">Line Records</div><div class="stat-value"><?= num($summary['line_records'] ?? 0) ?></div><div class="stat-note">a PO can have many items</div></div>
+        <div class="stat"><div class="stat-label">Items</div><div class="stat-value"><?= num($summary['items'] ?? 0) ?></div><div class="stat-note">distinct item codes</div></div>
+        <div class="stat"><div class="stat-label">Total Qty</div><div class="stat-value"><?= num($summary['total_qty'] ?? 0) ?></div><div class="stat-note">ordered quantity</div></div>
+        <div class="stat"><div class="stat-label">Delivered</div><div class="stat-value"><?= num($summary['delivered_qty'] ?? 0) ?></div><div class="stat-note">actual delivered qty</div></div>
+        <div class="stat"><div class="stat-label">Zero Delivery</div><div class="stat-value"><?= num($summary['zero_delivery_pos'] ?? 0) ?> PO</div><div class="stat-note"><?= num($summary['zero_delivery_lines'] ?? 0) ?> item lines</div></div>
     </section>
 
     <div class="grid">
         <section class="panel">
-            <h2>OTIF &amp; Fill Rate by Date</h2>
+            <h2>Fulfilment by Date</h2>
             <table>
                 <thead>
-                    <tr><th>Date</th><th>Lines</th><th>OTIF</th><th>Fill Rate</th><th>Short</th></tr>
+                    <tr><th>Date</th><th class="num">Orders</th><th class="num">Ordered</th><th class="num">Delivered</th><th class="num">Fill Rate</th><th class="num">OTIF</th></tr>
                 </thead>
                 <tbody>
                 <?php foreach ($byDate as $r): ?>
                     <tr>
-                        <td><?= e($r['ship_date']) ?></td>
-                        <td class="num"><?= num($r['line_count']) ?></td>
-                        <td class="num"><?= pct($r['otif']) ?></td>
-                        <td class="num"><?= pct($r['item_fill_rate']) ?></td>
-                        <td class="num"><?= num($r['shipped_short_cases']) ?></td>
+                        <td><?= e($r['posting_date']) ?></td>
+                        <td class="num"><?= num($r['orders']) ?></td>
+                        <td class="num"><?= num($r['order_qty']) ?></td>
+                        <td class="num"><?= num($r['delivered_qty']) ?></td>
+                        <td class="num"><?= pct($r['fill_rate']) ?></td>
+                        <td class="num"><?= pct($r['otif_rate']) ?></td>
                     </tr>
                 <?php endforeach; ?>
                 <?php if ($byDate === []): ?>
+                    <tr><td colspan="6" class="empty">No data</td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </section>
+
+        <section class="panel">
+            <h2>Fulfilment by Warehouse</h2>
+            <table>
+                <thead><tr><th>Warehouse</th><th class="num">Lines</th><th class="num">Ordered</th><th class="num">Delivered</th><th class="num">Fill Rate</th></tr></thead>
+                <tbody>
+                <?php foreach ($byWarehouse as $r): ?>
+                    <tr>
+                        <td><?= e($r['warehouse']) ?></td>
+                        <td class="num"><?= num($r['line_count']) ?></td>
+                        <td class="num"><?= num($r['order_qty']) ?></td>
+                        <td class="num"><?= num($r['delivered_qty']) ?></td>
+                        <td class="num"><?= pct($r['fill_rate']) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if ($byWarehouse === []): ?>
                     <tr><td colspan="5" class="empty">No data</td></tr>
                 <?php endif; ?>
                 </tbody>
@@ -208,54 +260,41 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
         </section>
 
         <section class="panel">
-            <h2>Complaints by Concern Type</h2>
+            <h2>Top Customers by Delivered Qty</h2>
             <table>
-                <thead><tr><th>Concern Type</th><th>Count</th></tr></thead>
-                <tbody>
-                <?php foreach ($pareto as $r): ?>
-                    <tr>
-                        <td><?= e($r['concern_type']) ?></td>
-                        <td class="num"><?= num($r['complaint_count']) ?></td>
-                    </tr>
-                <?php endforeach; ?>
-                <?php if ($pareto === []): ?>
-                    <tr><td colspan="2" class="empty">No data</td></tr>
-                <?php endif; ?>
-                </tbody>
-            </table>
-        </section>
-
-        <section class="panel">
-            <h2>Top Customers by Cases Shipped</h2>
-            <table>
-                <thead><tr><th>Customer</th><th>Cases</th></tr></thead>
+                <thead><tr><th>Customer</th><th class="num">Delivered</th><th class="num">Fill Rate</th></tr></thead>
                 <tbody>
                 <?php foreach ($topCustomers as $r): ?>
                     <tr>
-                        <td><?= e($r['customer']) ?></td>
-                        <td class="num"><?= num($r['qty_shipped']) ?></td>
+                        <td><?= e($r['customer_name']) ?></td>
+                        <td class="num"><?= num($r['delivered_qty']) ?></td>
+                        <td class="num"><?= pct($r['fill_rate']) ?></td>
                     </tr>
                 <?php endforeach; ?>
                 <?php if ($topCustomers === []): ?>
-                    <tr><td colspan="2" class="empty">No data</td></tr>
+                    <tr><td colspan="3" class="empty">No data</td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>
         </section>
 
         <section class="panel">
-            <h2>Top SKUs by Cases Shipped</h2>
+            <h2>Zero-Delivery Lines</h2>
             <table>
-                <thead><tr><th>Item #</th><th>Cases</th></tr></thead>
+                <thead><tr><th>SO</th><th>PO</th><th>Customer</th><th>Item</th><th class="num">Ordered</th><th>Pick Status</th></tr></thead>
                 <tbody>
-                <?php foreach ($topSkus as $r): ?>
+                <?php foreach ($zeroDelivery as $r): ?>
                     <tr>
-                        <td><?= e($r['item_number']) ?></td>
-                        <td class="num"><?= num($r['qty_shipped']) ?></td>
+                        <td><?= e($r['sales_order']) ?></td>
+                        <td><?= e($r['po_number']) ?></td>
+                        <td><?= e($r['customer_name']) ?></td>
+                        <td><?= e($r['item_code']) ?></td>
+                        <td class="num"><?= num($r['order_qty']) ?></td>
+                        <td><?= e($r['pick_status']) ?></td>
                     </tr>
                 <?php endforeach; ?>
-                <?php if ($topSkus === []): ?>
-                    <tr><td colspan="2" class="empty">No data</td></tr>
+                <?php if ($zeroDelivery === []): ?>
+                    <tr><td colspan="6" class="empty">No zero-delivery lines</td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>
@@ -266,7 +305,7 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
 </main>
 
 <footer class="footer">
-    KPI Dashboard · foundation build · data source: reference workbook (to be replaced by PRIMS / PRODHANA feeds)
+    KPI Dashboard · Delivery / OMS · source: SAP Business One (PRODHANA) via local cache<?php if ($lastRefreshed): ?> · data refreshed <?= e($lastRefreshed) ?><?php endif; ?>
 </footer>
 </body>
 </html>
