@@ -17,14 +17,24 @@ final class KpiRepository
     /** @return array<string, mixed> */
     public function summary(): array
     {
-        $row = $this->pdo->query('SELECT * FROM vw_kpi_summary')->fetch();
-        return $row ?: [];
+        try {
+            $row = $this->pdo->query('SELECT * FROM vw_kpi_summary')->fetch();
+            return $row ?: [];
+        } catch (PDOException $e) {
+            error_log('[KpiRepository::summary] ' . $e->getMessage());
+            throw new RuntimeException('Failed to load KPI summary.', 0, $e);
+        }
     }
 
     /** @return array<string, float> metric_key => target_value */
     public function targets(): array
     {
-        $rows = $this->pdo->query('SELECT metric_key, target_value FROM kpi_targets')->fetchAll();
+        try {
+            $rows = $this->pdo->query('SELECT metric_key, target_value FROM kpi_targets')->fetchAll();
+        } catch (PDOException $e) {
+            error_log('[KpiRepository::targets] ' . $e->getMessage());
+            throw new RuntimeException('Failed to load KPI targets.', 0, $e);
+        }
         $out = [];
         foreach ($rows as $r) {
             $out[(string) $r['metric_key']] = (float) $r['target_value'];
@@ -35,30 +45,50 @@ final class KpiRepository
     /** @return array<int, array<string, mixed>> */
     public function byDate(): array
     {
-        return $this->pdo->query('SELECT * FROM vw_kpi_by_date')->fetchAll();
+        try {
+            return $this->pdo->query('SELECT * FROM vw_kpi_by_date')->fetchAll();
+        } catch (PDOException $e) {
+            error_log('[KpiRepository::byDate] ' . $e->getMessage());
+            throw new RuntimeException('Failed to load KPI by-date data.', 0, $e);
+        }
     }
 
     /** @return array<int, array<string, mixed>> */
     public function topCustomers(int $limit = 10): array
     {
-        $stmt = $this->pdo->prepare('SELECT * FROM vw_customer_shipment LIMIT :lim');
-        $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
-        $stmt->execute();
-        return $stmt->fetchAll();
+        try {
+            $stmt = $this->pdo->prepare('SELECT * FROM vw_customer_shipment LIMIT :lim');
+            $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            return $stmt->fetchAll();
+        } catch (PDOException $e) {
+            error_log('[KpiRepository::topCustomers] ' . $e->getMessage());
+            throw new RuntimeException('Failed to load top customers.', 0, $e);
+        }
     }
 
     /** @return array<int, array<string, mixed>> */
     public function topSkus(int $limit = 10): array
     {
-        $stmt = $this->pdo->prepare('SELECT * FROM vw_sku_shipment LIMIT :lim');
-        $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
-        $stmt->execute();
-        return $stmt->fetchAll();
+        try {
+            $stmt = $this->pdo->prepare('SELECT * FROM vw_sku_shipment LIMIT :lim');
+            $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            return $stmt->fetchAll();
+        } catch (PDOException $e) {
+            error_log('[KpiRepository::topSkus] ' . $e->getMessage());
+            throw new RuntimeException('Failed to load top SKUs.', 0, $e);
+        }
     }
 
     /** @return array<int, array<string, mixed>> */
     public function complaintsPareto(): array
     {
-        return $this->pdo->query('SELECT * FROM vw_complaints_pareto')->fetchAll();
+        try {
+            return $this->pdo->query('SELECT * FROM vw_complaints_pareto')->fetchAll();
+        } catch (PDOException $e) {
+            error_log('[KpiRepository::complaintsPareto] ' . $e->getMessage());
+            throw new RuntimeException('Failed to load complaints pareto.', 0, $e);
+        }
     }
 }
