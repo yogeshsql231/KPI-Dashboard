@@ -28,11 +28,10 @@ SELECT
     T0."CardCode"                                                    AS customer_code,
     T0."CardName"                                                    AS customer_name,
     -- Customer PO. One SO can carry several unique POs, so the PO is taken from
-    -- the ORDER LINE (RDR1 "Customer's Purchase Order Number") and only falls
-    -- back to the header "Customer Ref. No." (ORDR.NumAtCard) when the line
-    -- field is empty. Confirm the exact RDR1 column name on your DB (see the
-    -- metadata query in the README / chat) and set it below.
-    COALESCE(NULLIF(T1."CSTNo", ''), T0."NumAtCard")                 AS po_number,
+    -- the ORDER LINE (RDR1."PoNum" = "Customer's Purchase Order Number") and
+    -- only falls back to the header "Customer Ref. No." (ORDR.NumAtCard) when
+    -- the line field is empty. (RDR1."PoItmNum" holds the customer's PO line #.)
+    COALESCE(NULLIF(T1."PoNum", ''), T0."NumAtCard")                 AS po_number,
     T1."ItemCode"                                                    AS item_code,
     T1."Dscription"                                                  AS item_description,
     COALESCE(WH."WhsName", T1."WhsCode")                             AS warehouse,
