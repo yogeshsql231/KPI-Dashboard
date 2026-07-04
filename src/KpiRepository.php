@@ -2,11 +2,14 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/Filters.php';
+
 /**
  * Read-only KPI queries used by the dashboard.
  *
- * All queries run against the VIEWS defined in sql/schema.sql so the KPI math
- * lives in exactly one place (the database).
+ * The KPI math lives in the VIEWS defined in sql/schema.sql; this class layers
+ * the dashboard filters on top as parameterised WHERE clauses (positional
+ * placeholders only — user input is never concatenated into SQL).
  */
 final class KpiRepository
 {
@@ -14,11 +17,46 @@ final class KpiRepository
     {
     }
 
-    /** @return array<string, mixed> */
-    public function summary(): array
+    /**
+     * Overall scorecard for the current filter selection.
+     *
+     * @return array<string, mixed>
+     */
+    public function summary(Filters $f): array
     {
-        $row = $this->pdo->query('SELECT * FROM vw_kpi_summary')->fetch();
-        return $row ?: [];
+        [$where, $params] = $f->shipmentClause();
+        $ship = $this->pdo->prepare(
+            "SELECT
+                AVG(otif_flag)                    AS otif,
+                AVG(ifr)                          AS item_fill_rate,
+                COALESCE(SUM(cases_short_pos), 0) AS shipped_short_cases,
+                AVG(lead_time_days)               AS avg_lead_time_days,
+                COUNT(*)                          AS total_lines,
+                COUNT(DISTINCT po_number)         AS total_pos,
+                COALESCE(SUM(qty_shipped), 0)     AS total_qty_shipped
+             FROM vw_order_shipment_kpi
+             WHERE $where"
+        );
+        $ship->execute($params);
+        $row = $ship->fetch() ?: [];
+
+        [$cWhere, $cParams] = $f->complaintClause();
+        $comp = $this->pdo->prepare(
+            "SELECT COUNT(*) AS total_complaints FROM customer_complaints WHERE $cWhere"
+        );
+        $comp->execute($cParams);
+        $row['total_complaints'] = (int) ($comp->fetchColumn() ?: 0);
+
+        // PO revisions: filter by date + customer when those columns exist.
+        [$rWhere, $rParams] = $this->revisionClause($f);
+        $rev = $this->pdo->prepare(
+            "SELECT COALESCE(SUM(revise_count), 0) AS total_po_revisions
+             FROM po_revisions WHERE $rWhere"
+        );
+        $rev->execute($rParams);
+        $row['total_po_revisions'] = (int) ($rev->fetchColumn() ?: 0);
+
+        return $row;
     }
 
     /** @return array<string, float> metric_key => target_value */
@@ -33,32 +71,124 @@ final class KpiRepository
     }
 
     /** @return array<int, array<string, mixed>> */
-    public function byDate(): array
+    public function byDate(Filters $f): array
     {
-        return $this->pdo->query('SELECT * FROM vw_kpi_by_date')->fetchAll();
-    }
-
-    /** @return array<int, array<string, mixed>> */
-    public function topCustomers(int $limit = 10): array
-    {
-        $stmt = $this->pdo->prepare('SELECT * FROM vw_customer_shipment LIMIT :lim');
-        $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
-        $stmt->execute();
+        [$where, $params] = $f->shipmentClause();
+        $stmt = $this->pdo->prepare(
+            "SELECT
+                ship_date,
+                COUNT(*)             AS line_count,
+                AVG(otif_flag)       AS otif,
+                AVG(ifr)             AS item_fill_rate,
+                SUM(cases_short_pos) AS shipped_short_cases
+             FROM vw_order_shipment_kpi
+             WHERE $where
+             GROUP BY ship_date
+             ORDER BY ship_date"
+        );
+        $stmt->execute($params);
         return $stmt->fetchAll();
     }
 
     /** @return array<int, array<string, mixed>> */
-    public function topSkus(int $limit = 10): array
+    public function topCustomers(Filters $f, int $limit = 10): array
     {
-        $stmt = $this->pdo->prepare('SELECT * FROM vw_sku_shipment LIMIT :lim');
-        $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
-        $stmt->execute();
+        [$where, $params] = $f->shipmentClause();
+        $stmt = $this->pdo->prepare(
+            "SELECT customer, SUM(qty_shipped) AS qty_shipped
+             FROM vw_order_shipment_kpi
+             WHERE $where
+             GROUP BY customer
+             ORDER BY qty_shipped DESC
+             LIMIT " . (int) $limit
+        );
+        $stmt->execute($params);
         return $stmt->fetchAll();
     }
 
     /** @return array<int, array<string, mixed>> */
-    public function complaintsPareto(): array
+    public function topSkus(Filters $f, int $limit = 10): array
     {
-        return $this->pdo->query('SELECT * FROM vw_complaints_pareto')->fetchAll();
+        [$where, $params] = $f->shipmentClause();
+        $stmt = $this->pdo->prepare(
+            "SELECT item_number, SUM(qty_shipped) AS qty_shipped
+             FROM vw_order_shipment_kpi
+             WHERE $where
+             GROUP BY item_number
+             ORDER BY qty_shipped DESC
+             LIMIT " . (int) $limit
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function complaintsPareto(Filters $f): array
+    {
+        [$where, $params] = $f->complaintClause();
+        $stmt = $this->pdo->prepare(
+            "SELECT
+                COALESCE(concern_type, 'Unclassified') AS concern_type,
+                COUNT(*)                               AS complaint_count,
+                COALESCE(SUM(dollar_value), 0)         AS dollar_value
+             FROM customer_complaints
+             WHERE $where
+             GROUP BY COALESCE(concern_type, 'Unclassified')
+             ORDER BY complaint_count DESC"
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /** @return array<int, string> distinct customer names for the filter dropdown */
+    public function customerOptions(): array
+    {
+        $rows = $this->pdo->query(
+            'SELECT DISTINCT customer FROM order_shipments WHERE is_sample = 0 ORDER BY customer'
+        )->fetchAll(PDO::FETCH_COLUMN);
+        return array_map('strval', $rows);
+    }
+
+    /** @return array<int, string> distinct item numbers for the filter dropdown */
+    public function itemOptions(): array
+    {
+        $rows = $this->pdo->query(
+            'SELECT DISTINCT item_number FROM order_shipments WHERE is_sample = 0 ORDER BY item_number'
+        )->fetchAll(PDO::FETCH_COLUMN);
+        return array_map('strval', $rows);
+    }
+
+    /** @return array<int, string> distinct warehouses for the filter dropdown */
+    public function warehouseOptions(): array
+    {
+        $rows = $this->pdo->query(
+            "SELECT DISTINCT warehouse FROM order_shipments
+             WHERE is_sample = 0 AND warehouse IS NOT NULL AND warehouse <> '' ORDER BY warehouse"
+        )->fetchAll(PDO::FETCH_COLUMN);
+        return array_map('strval', $rows);
+    }
+
+    /**
+     * PO-revisions filter: date range + customer (this table has no item).
+     *
+     * @return array{0:string,1:array<int,mixed>}
+     */
+    private function revisionClause(Filters $f): array
+    {
+        $conds = ['1 = 1'];
+        $params = [];
+        if ($f->fromDate !== null) {
+            $conds[] = 'revision_date >= ?';
+            $params[] = $f->fromDate;
+        }
+        if ($f->toDate !== null) {
+            $conds[] = 'revision_date <= ?';
+            $params[] = $f->toDate;
+        }
+        if ($f->customer !== null) {
+            $conds[] = 'customer = ?';
+            $params[] = $f->customer;
+        }
+        return [implode(' AND ', $conds), $params];
     }
 }

@@ -1,6 +1,7 @@
 -- Auto-generated seed data derived from the reference workbook
 -- "Metrics - Customer Service 6.20-6.26.xlsx". Numbers match the source.
 SET NAMES utf8mb4;
+USE kpi_dashboard;
 
 INSERT INTO order_shipments
   (ship_date, po_number, customer, ship_via, item_number, qty_requested, qty_shipped, order_date, requested_date, actual_date)
