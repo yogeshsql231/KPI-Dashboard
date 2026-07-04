@@ -87,8 +87,11 @@ if (!function_exists('env')) {
 // Baseline runtime configuration.
 date_default_timezone_set((string) env('APP_TIMEZONE', 'America/New_York'));
 
+$appEnv   = (string) env('APP_ENV', 'production');
 $appDebug = (bool) env('APP_DEBUG', false);
 error_reporting(E_ALL);
-// Never echo raw errors to the client in production; log them instead.
-ini_set('display_errors', $appDebug ? '1' : '0');
+// display_errors is ONLY enabled when BOTH APP_DEBUG=true AND APP_ENV=local.
+// This prevents accidental information leakage in staging/production.
+$showErrors = ($appDebug && $appEnv === 'local') ? '1' : '0';
+ini_set('display_errors', $showErrors);
 ini_set('log_errors', '1');
