@@ -27,6 +27,11 @@ SELECT
     T1."ShipDate"                                                    AS required_date,
     T0."CardCode"                                                    AS customer_code,
     T0."CardName"                                                    AS customer_name,
+    CG."GroupName"                                                   AS customer_group,
+    -- Retail flag: adjust the match to your customer group naming. Defaults to
+    -- 1 when the business-partner group name contains 'Retail'.
+    CASE WHEN UPPER(COALESCE(CG."GroupName", '')) LIKE '%RETAIL%'
+         THEN 1 ELSE 0 END                                           AS is_retail,
     -- Customer PO. One SO can carry several unique POs, so the PO is taken from
     -- the ORDER LINE (RDR1."PoNum" = "Customer's Purchase Order Number") and
     -- only falls back to the header "Customer Ref. No." (ORDR.NumAtCard) when
@@ -39,6 +44,10 @@ SELECT
     T1."Quantity"                                                    AS order_qty,
     NULL                                                             AS qty_pallet,
     T1."NumPerMsr"                                                   AS qty_per_pack,
+    -- Bags per pallet. If you keep this on the item master as a UDF (e.g.
+    -- OITM."U_BagsPerPallet"), map it here; otherwise leave NULL and pallets
+    -- stay uncounted rather than guessed.
+    NULL                                                             AS qty_per_pallet,
     T1."unitMsr"                                                     AS unit_of_measure,
     T1."ReleasQtty"                                                  AS released_qty,
 
@@ -50,6 +59,16 @@ SELECT
           AND D1."BaseEntry" = T1."DocEntry"
           AND D1."BaseLine"  = T1."LineNum"
     ), 0)                                                           AS delivered_qty,
+    -- net order value $ for this line (before tax)
+    COALESCE(T1."LineTotal", 0)                                      AS line_amount,
+    -- delivered value $: net line total summed from the linked delivery lines
+    COALESCE((
+        SELECT SUM(D1."LineTotal")
+        FROM "DAMASCUS_BAKERY"."DLN1" D1
+        WHERE D1."BaseType"  = 17
+          AND D1."BaseEntry" = T1."DocEntry"
+          AND D1."BaseLine"  = T1."LineNum"
+    ), 0)                                                           AS delivered_amount,
     COALESCE(T1."PickQtty", 0)                                       AS pick_qty,
 
     CASE
@@ -102,5 +121,7 @@ FROM "DAMASCUS_BAKERY"."ORDR" T0
     INNER JOIN "DAMASCUS_BAKERY"."RDR1" T1 ON T1."DocEntry" = T0."DocEntry"
     LEFT  JOIN "DAMASCUS_BAKERY"."OWHS" WH  ON WH."WhsCode" = T1."WhsCode"
     LEFT  JOIN "DAMASCUS_BAKERY"."OSHP" SHP ON SHP."TrnspCode" = T0."TrnspCode"
+    LEFT  JOIN "DAMASCUS_BAKERY"."OCRD" BP  ON BP."CardCode" = T0."CardCode"
+    LEFT  JOIN "DAMASCUS_BAKERY"."OCRG" CG  ON CG."GroupCode" = BP."GroupCode"
 WHERE T0."DocDate" >= ADD_DAYS(CURRENT_DATE, -60)
 ORDER BY T0."DocDate", T0."DocNum", T1."LineNum";

@@ -21,6 +21,10 @@ SELECT
     RequiredDate      AS required_date,
     CustomerCode      AS customer_code,
     CustomerName      AS customer_name,
+    -- v2 fields: map to the cache columns if they exist, else keep the NULL/0
+    -- defaults (dashboard shows counts/qty live and $/pallet once mapped).
+    CAST(NULL AS VARCHAR(100)) AS customer_group,
+    CAST(0 AS INT)            AS is_retail,
     PONumber          AS po_number,
     ItemCode          AS item_code,
     ItemDescription   AS item_description,
@@ -28,9 +32,12 @@ SELECT
     OrderQty          AS order_qty,
     QtyPallet         AS qty_pallet,
     QtyPerPack        AS qty_per_pack,
+    CAST(NULL AS DECIMAL(18,4)) AS qty_per_pallet,
     UnitOfMeasure     AS unit_of_measure,
     ReleasedQty       AS released_qty,
     DeliveredQty      AS delivered_qty,
+    CAST(NULL AS DECIMAL(18,4)) AS line_amount,
+    CAST(NULL AS DECIMAL(18,4)) AS delivered_amount,
     PickQty           AS pick_qty,
     PickStatus        AS pick_status,
     Approved          AS approved,

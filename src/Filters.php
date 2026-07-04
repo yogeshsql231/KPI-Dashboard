@@ -17,6 +17,8 @@ final class Filters
         public readonly ?string $customer = null,
         public readonly ?string $item = null,
         public readonly ?string $po = null,
+        public readonly ?string $warehouse = null,
+        public readonly ?string $salesOrder = null,
     ) {
     }
 
@@ -33,6 +35,8 @@ final class Filters
             self::cleanText($q['customer'] ?? null),
             self::cleanText($q['item'] ?? null),
             self::cleanText($q['po'] ?? null),
+            self::cleanText($q['warehouse'] ?? null),
+            self::cleanText($q['so'] ?? null),
         );
     }
 
@@ -42,7 +46,9 @@ final class Filters
             || $this->toDate !== null
             || $this->customer !== null
             || $this->item !== null
-            || $this->po !== null;
+            || $this->po !== null
+            || $this->warehouse !== null
+            || $this->salesOrder !== null;
     }
 
     /**
@@ -76,6 +82,14 @@ final class Filters
         if ($this->po !== null) {
             $conds[] = 'po_number LIKE ?';
             $params[] = '%' . $this->po . '%';
+        }
+        if ($this->warehouse !== null) {
+            $conds[] = 'warehouse = ?';
+            $params[] = $this->warehouse;
+        }
+        if ($this->salesOrder !== null) {
+            $conds[] = 'so_docentry LIKE ?';
+            $params[] = '%' . $this->salesOrder . '%';
         }
 
         return [implode(' AND ', $conds), $params];

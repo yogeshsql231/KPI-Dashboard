@@ -16,11 +16,11 @@ declare(strict_types=1);
  * The source query must return these output columns (alias them in the .sql
  * file to match your real schema):
  *   source_key, sales_order, so_status, posting_date, ship_date, required_date,
- *   customer_code, customer_name, po_number, item_code, item_description,
- *   warehouse, order_qty, qty_pallet, qty_per_pack, unit_of_measure,
- *   released_qty, delivered_qty, pick_qty, pick_status, approved,
- *   short_shipment, late_shipment, complete_shipment, otif, fill_rate,
- *   manual_bol, carrier
+ *   customer_code, customer_name, customer_group, is_retail, po_number,
+ *   item_code, item_description, warehouse, order_qty, qty_pallet, qty_per_pack,
+ *   qty_per_pallet, unit_of_measure, released_qty, delivered_qty, line_amount,
+ *   delivered_amount, pick_qty, pick_status, approved, short_shipment,
+ *   late_shipment, complete_shipment, otif, fill_rate, manual_bol, carrier
  *
  * Idempotent: rows are upserted on (source_system, source_key), so re-running
  * updates existing rows instead of duplicating them. READ-ONLY on the source.
@@ -53,8 +53,8 @@ if ($sql === '' || (str_starts_with(ltrim($sql), '--') && !preg_match('/select/i
 
 /** Text columns copied through verbatim (nullified when empty). */
 $textCols = [
-    'sales_order', 'so_status', 'customer_code', 'customer_name', 'po_number',
-    'item_code', 'item_description', 'warehouse', 'unit_of_measure',
+    'sales_order', 'so_status', 'customer_code', 'customer_name', 'customer_group',
+    'po_number', 'item_code', 'item_description', 'warehouse', 'unit_of_measure',
     'pick_status', 'approved', 'short_shipment', 'late_shipment',
     'complete_shipment', 'otif', 'manual_bol', 'carrier',
 ];
@@ -62,8 +62,9 @@ $textCols = [
 $dateCols = ['posting_date', 'ship_date', 'required_date'];
 /** Numeric columns. */
 $numCols = [
-    'order_qty', 'qty_pallet', 'qty_per_pack', 'released_qty',
-    'delivered_qty', 'pick_qty', 'fill_rate',
+    'order_qty', 'qty_pallet', 'qty_per_pack', 'qty_per_pallet', 'released_qty',
+    'delivered_qty', 'line_amount', 'delivered_amount', 'pick_qty', 'fill_rate',
+    'is_retail',
 ];
 $expected = array_merge(['source_key'], $textCols, $dateCols, $numCols);
 $allCols  = array_merge($textCols, $dateCols, $numCols);

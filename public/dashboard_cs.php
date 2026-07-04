@@ -46,8 +46,7 @@ $byDate = [];
 $topCustomers = [];
 $topSkus = [];
 $pareto = [];
-$customerOptions = [];
-$itemOptions = [];
+$warehouseOptions = [];
 $filters = Filters::fromRequest($_GET);
 
 try {
@@ -58,8 +57,7 @@ try {
     $topCustomers = $repo->topCustomers($filters, 10);
     $topSkus = $repo->topSkus($filters, 10);
     $pareto = $repo->complaintsPareto($filters);
-    $customerOptions = $repo->customerOptions();
-    $itemOptions = $repo->itemOptions();
+    $warehouseOptions = $repo->warehouseOptions();
 } catch (Throwable $ex) {
     $error = 'Unable to load KPI data. Check the database connection in your .env file.';
 }
@@ -86,6 +84,8 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Auto-refresh every 30 minutes (1800s); preserves the active filters. -->
+    <meta http-equiv="refresh" content="1800">
     <title>KPI Dashboard · Customer Service / OMS</title>
     <link rel="stylesheet" href="assets/style.css">
 </head>
@@ -93,6 +93,11 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
 <header class="topbar">
     <div class="brand">KPI Dashboard</div>
     <div class="subtitle">Customer Service / Order Management</div>
+    <nav class="topnav">
+        <a href="overview.php">Overview</a>
+        <a href="dashboard.php">Delivery</a>
+        <a href="dashboard_cs.php" class="active">Customer Service</a>
+    </nav>
 </header>
 
 <main class="container">
@@ -106,22 +111,17 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
             <input type="date" id="to_date" name="to_date" value="<?= e($filters->toDate) ?>">
         </div>
         <div class="filter">
-            <label for="customer">Customer</label>
-            <select id="customer" name="customer">
-                <option value="">All customers</option>
-                <?php foreach ($customerOptions as $opt): ?>
-                    <option value="<?= e($opt) ?>"<?= $filters->customer === $opt ? ' selected' : '' ?>><?= e($opt) ?></option>
+            <label for="warehouse">Warehouse</label>
+            <select id="warehouse" name="warehouse">
+                <option value="">All warehouses</option>
+                <?php foreach ($warehouseOptions as $opt): ?>
+                    <option value="<?= e($opt) ?>"<?= $filters->warehouse === $opt ? ' selected' : '' ?>><?= e($opt) ?></option>
                 <?php endforeach; ?>
             </select>
         </div>
         <div class="filter">
-            <label for="item">Item #</label>
-            <select id="item" name="item">
-                <option value="">All items</option>
-                <?php foreach ($itemOptions as $opt): ?>
-                    <option value="<?= e($opt) ?>"<?= $filters->item === $opt ? ' selected' : '' ?>><?= e($opt) ?></option>
-                <?php endforeach; ?>
-            </select>
+            <label for="so">SO number</label>
+            <input type="text" id="so" name="so" placeholder="contains…" value="<?= e($filters->salesOrder) ?>">
         </div>
         <div class="filter">
             <label for="po">PO number</label>
@@ -130,6 +130,7 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
         <div class="filter-actions">
             <button type="submit" class="btn btn-primary">Apply</button>
             <a class="btn btn-reset" href="dashboard_cs.php">Reset</a>
+            <button type="button" class="btn btn-refresh" onclick="window.location.reload()" title="Reload the latest data now (auto-refreshes every 30 min)">Refresh Data</button>
         </div>
     </form>
 

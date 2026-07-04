@@ -155,4 +155,87 @@ final class DeliveryRepository
         $v = $this->pdo->query('SELECT MAX(refreshed_at) FROM delivery_lines')->fetchColumn();
         return $v ?: null;
     }
+
+    // -----------------------------------------------------------------------
+    // v2 "Overview" dashboard: header KPIs (# and $) and chart feeds.
+    // -----------------------------------------------------------------------
+
+    /**
+     * Header KPIs for the Overview page: Total SO, Total PO, Delivery Qty,
+     * Total Pallets, and their dollar values.
+     *
+     * @return array<string, mixed>
+     */
+    public function overview(DeliveryFilters $f): array
+    {
+        [$where, $params] = $f->clause();
+        $stmt = $this->pdo->prepare(
+            "SELECT
+                COUNT(DISTINCT sales_order)                 AS total_so,
+                COUNT(DISTINCT po_number)                   AS total_po,
+                COALESCE(SUM(order_qty), 0)                 AS order_qty,
+                COALESCE(SUM(delivered_qty), 0)             AS delivered_qty,
+                COALESCE(SUM(line_amount), 0)               AS order_amount,
+                COALESCE(SUM(delivered_amount), 0)          AS delivered_amount,
+                -- Pallets: only lines that carry a bags-per-pallet conversion
+                -- contribute, so the total is never inflated by guesswork.
+                COALESCE(SUM(CASE WHEN qty_per_pallet > 0
+                     THEN delivered_qty / qty_per_pallet END), 0) AS total_pallets
+             FROM vw_delivery_lines
+             WHERE $where"
+        );
+        $stmt->execute($params);
+        return $stmt->fetch() ?: [];
+    }
+
+    /**
+     * Sales-order performance over time: order count and dollar value per day.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function soPerformanceByDate(DeliveryFilters $f): array
+    {
+        [$where, $params] = $f->clause();
+        $stmt = $this->pdo->prepare(
+            "SELECT
+                posting_date,
+                COUNT(DISTINCT sales_order)      AS orders,
+                COALESCE(SUM(line_amount), 0)    AS order_amount,
+                COALESCE(SUM(delivered_amount), 0) AS delivered_amount
+             FROM vw_delivery_lines
+             WHERE $where
+             GROUP BY posting_date
+             ORDER BY posting_date"
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Top customers by order count and dollar value. When $retailOnly is true,
+     * only rows flagged is_retail = 1 are considered.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function customersByOrders(DeliveryFilters $f, int $limit = 10, bool $retailOnly = false): array
+    {
+        [$where, $params] = $f->clause();
+        if ($retailOnly) {
+            $where .= ' AND is_retail = 1';
+        }
+        $stmt = $this->pdo->prepare(
+            "SELECT
+                customer_name,
+                COUNT(DISTINCT sales_order)      AS orders,
+                COALESCE(SUM(line_amount), 0)    AS order_amount,
+                COALESCE(SUM(delivered_qty), 0)  AS delivered_qty
+             FROM vw_delivery_lines
+             WHERE $where
+             GROUP BY customer_name
+             ORDER BY order_amount DESC, orders DESC
+             LIMIT " . (int) $limit
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
 }

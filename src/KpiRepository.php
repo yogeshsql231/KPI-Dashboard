@@ -158,6 +158,16 @@ final class KpiRepository
         return array_map('strval', $rows);
     }
 
+    /** @return array<int, string> distinct warehouses for the filter dropdown */
+    public function warehouseOptions(): array
+    {
+        $rows = $this->pdo->query(
+            "SELECT DISTINCT warehouse FROM order_shipments
+             WHERE is_sample = 0 AND warehouse IS NOT NULL AND warehouse <> '' ORDER BY warehouse"
+        )->fetchAll(PDO::FETCH_COLUMN);
+        return array_map('strval', $rows);
+    }
+
     /**
      * PO-revisions filter: date range + customer (this table has no item).
      *
