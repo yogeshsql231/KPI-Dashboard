@@ -45,7 +45,13 @@ final class SourceDb
         $user   = (string) env($prefix . '_DB_USER', '');
         $pass   = (string) env($prefix . '_DB_PASS', '');
 
-        if ($host === '' || $name === '') {
+        // ODBC connects through a named DSN, which already carries the host/port,
+        // so only the DSN name (<PREFIX>_DB_NAME) is required for that driver.
+        if ($driver === 'odbc') {
+            if ($name === '') {
+                throw new RuntimeException("Source '$prefix' is not configured (missing ODBC DSN name in {$prefix}_DB_NAME).");
+            }
+        } elseif ($host === '' || $name === '') {
             throw new RuntimeException("Source '$prefix' is not configured (missing host/name in .env).");
         }
 
