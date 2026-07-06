@@ -66,6 +66,14 @@ final class SourceDb
         if (in_array($driver, ['mysql'], true)) {
             $options[PDO::ATTR_EMULATE_PREPARES] = false;
         }
+        // pdo_sqlsrv prepares statements by default, which makes SQL Server ask
+        // the remote provider for column metadata up front. For OPENQUERY into a
+        // linked server (e.g. HANA) that metadata step fails with "An error
+        // occurred while preparing the query". Direct query mode executes the
+        // statement without a separate prepare and avoids that.
+        if ($driver === 'sqlsrv' && defined('PDO::SQLSRV_ATTR_DIRECT_QUERY')) {
+            $options[PDO::SQLSRV_ATTR_DIRECT_QUERY] = true;
+        }
 
         try {
             $pdo = new PDO($dsn, $user, $pass, $options);
