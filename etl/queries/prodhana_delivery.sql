@@ -69,7 +69,9 @@ SELECT
           AND D1."BaseEntry" = T1."DocEntry"
           AND D1."BaseLine"  = T1."LineNum"
     ), 0)                                                           AS delivered_amount,
-    COALESCE(T1."PickQtty", 0)                                       AS pick_qty,
+    -- RDR1 has no picked-qty column on this HANA schema; pick status is tracked
+    -- via T1."PickStatus" below. Leave pick_qty NULL (not needed for the KPIs).
+    NULL                                                             AS pick_qty,
 
     CASE
         WHEN COALESCE((SELECT SUM(D1."Quantity") FROM "DAMASCUS_BAKERY"."DLN1" D1
