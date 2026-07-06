@@ -150,6 +150,12 @@ try {
     while (($row = $stmt->fetch(PDO::FETCH_ASSOC)) !== false) {
         $read++;
 
+        // Normalise column-name case: HANA folds unquoted aliases to UPPERCASE
+        // (and returns them that way through the linked server), while our
+        // expected column names are lowercase. Lowercasing keys makes the
+        // matching robust across all sources.
+        $row = array_change_key_case($row, CASE_LOWER);
+
         if (!$checkedColumns) {
             $missing = array_diff($expected, array_keys($row));
             if ($missing !== []) {
