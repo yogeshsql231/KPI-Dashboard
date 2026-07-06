@@ -13,6 +13,14 @@ declare(strict_types=1);
  *   php etl/pull_delivery.php --source=PRIMSBM  --dry-run
  *   php etl/pull_delivery.php --source=PRIMSBM  --query=etl/queries/primsbm_delivery.sql
  *
+ * --via=<LinkedServer>: run the (HANA) query THROUGH a SQL Server linked server
+ * using OPENQUERY, so live HANA data is fetched via the SQL Server connection
+ * (handy when a direct HANA login is unavailable but SQL Server has a linked
+ * server to HANA). Example — pull live HANA delivery lines via the PRODHANA
+ * linked server on the PRIMSBM SQL Server:
+ *
+ *   php etl/pull_delivery.php --source=PRIMSBM --query=etl/queries/prodhana_delivery.sql --via=PRODHANA
+ *
  * The source query must return these output columns (alias them in the .sql
  * file to match your real schema):
  *   source_key, sales_order, so_status, posting_date, ship_date, required_date,
@@ -35,8 +43,9 @@ if (PHP_SAPI !== 'cli') {
     exit(1);
 }
 
-$opts = getopt('', ['source:', 'query:', 'dry-run', 'limit::']);
+$opts = getopt('', ['source:', 'query:', 'via:', 'dry-run', 'limit::']);
 $source = strtoupper((string) ($opts['source'] ?? 'PRODHANA'));
+$via    = isset($opts['via']) ? trim((string) $opts['via']) : '';
 $dryRun = array_key_exists('dry-run', $opts);
 $limit  = isset($opts['limit']) ? (int) $opts['limit'] : 0;
 
@@ -49,6 +58,30 @@ $sql = trim((string) file_get_contents($queryFile));
 if ($sql === '' || (str_starts_with(ltrim($sql), '--') && !preg_match('/select/i', $sql))) {
     fwrite(STDERR, "Query file appears empty / not filled in: $queryFile\n");
     exit(1);
+}
+
+// --via: run the query through a SQL Server linked server via OPENQUERY. The
+// inner query text is passed verbatim to the remote (HANA), so single quotes
+// are doubled and any trailing ';' is dropped (OPENQUERY takes one statement).
+if ($via !== '') {
+    if (!preg_match('/^[A-Za-z0-9_.\\\\-]+$/', $via)) {
+        fwrite(STDERR, "Invalid --via linked-server name: $via\n");
+        exit(1);
+    }
+    // Drop full-line comments/blank lines to keep the OPENQUERY string literal
+    // compact (it has an 8000-char limit) and free of '--' comment side effects.
+    $lines = preg_split('/\r?\n/', $sql) ?: [];
+    $kept = array_filter($lines, static function (string $l): bool {
+        $t = ltrim($l);
+        return $t !== '' && !str_starts_with($t, '--');
+    });
+    $inner = rtrim(implode("\n", $kept));
+    $inner = rtrim($inner, ';');
+    $inner = str_replace("'", "''", $inner);
+    $sql = "SELECT * FROM OPENQUERY([$via], '$inner')";
+    if (strlen($inner) > 7900) {
+        fwrite(STDERR, "[etl] warning: OPENQUERY inner query is " . strlen($inner) . " chars (limit ~8000).\n");
+    }
 }
 
 /** Text columns copied through verbatim (nullified when empty). */
