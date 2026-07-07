@@ -45,12 +45,21 @@ SELECT
     COALESCE(NULLIF(TRIM(WH."WhsName"), ''), T1."WhsCode")           AS warehouse,
 
     T1."Quantity"                                                    AS order_qty,
-    NULL                                                             AS qty_pallet,
+    -- Pallet count for this line. RDR1/DLN1."U_QTYINPALLET" holds the (often
+    -- fractional) NUMBER OF PALLETS the quantity occupies -- NOT units-per-pallet
+    -- -- so it is summed, never divided into. We take the DELIVERED pallet count
+    -- from the linked delivery lines (DLN1) so partial deliveries are reflected.
+    COALESCE((
+        SELECT SUM(D1."U_QTYINPALLET")
+        FROM "DAMASCUS_BAKERY"."DLN1" D1
+        WHERE D1."BaseType"  = 17
+          AND D1."BaseEntry" = T1."DocEntry"
+          AND D1."BaseLine"  = T1."LineNum"
+    ), 0)                                                            AS qty_pallet,
     T1."NumPerMsr"                                                   AS qty_per_pack,
-    -- Units per pallet for this order line (Beas/WMS per-line UDF on RDR1).
-    -- "Total Pallets" is SUM(delivered_qty / qty_per_pallet) for lines where
-    -- this is > 0, so lines without a pallet config simply don't contribute.
-    T1."U_QTYINPALLET"                                               AS qty_per_pallet,
+    -- Units-per-pallet is not stored as such on this schema; pallet counts come
+    -- from qty_pallet above. Left NULL to avoid a wrong delivered_qty/x division.
+    NULL                                                             AS qty_per_pallet,
     T1."unitMsr"                                                     AS unit_of_measure,
     T1."ReleasQtty"                                                  AS released_qty,
 

@@ -177,10 +177,9 @@ final class DeliveryRepository
                 COALESCE(SUM(delivered_qty), 0)             AS delivered_qty,
                 COALESCE(SUM(line_amount), 0)               AS order_amount,
                 COALESCE(SUM(delivered_amount), 0)          AS delivered_amount,
-                -- Pallets: only lines that carry a bags-per-pallet conversion
-                -- contribute, so the total is never inflated by guesswork.
-                COALESCE(SUM(CASE WHEN qty_per_pallet > 0
-                     THEN delivered_qty / qty_per_pallet END), 0) AS total_pallets
+                -- Pallets: qty_pallet is the delivered pallet count per line
+                -- (SAP U_QTYINPALLET, often fractional), so we simply sum it.
+                COALESCE(SUM(qty_pallet), 0)                AS total_pallets
              FROM vw_delivery_lines
              WHERE $where"
         );
