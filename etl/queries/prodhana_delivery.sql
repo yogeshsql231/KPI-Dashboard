@@ -47,10 +47,10 @@ SELECT
     T1."Quantity"                                                    AS order_qty,
     NULL                                                             AS qty_pallet,
     T1."NumPerMsr"                                                   AS qty_per_pack,
-    -- Bags per pallet. If you keep this on the item master as a UDF (e.g.
-    -- OITM."U_BagsPerPallet"), map it here; otherwise leave NULL and pallets
-    -- stay uncounted rather than guessed.
-    NULL                                                             AS qty_per_pallet,
+    -- Units per pallet for this order line (Beas/WMS per-line UDF on RDR1).
+    -- "Total Pallets" is SUM(delivered_qty / qty_per_pallet) for lines where
+    -- this is > 0, so lines without a pallet config simply don't contribute.
+    T1."U_QTYINPALLET"                                               AS qty_per_pallet,
     T1."unitMsr"                                                     AS unit_of_measure,
     T1."ReleasQtty"                                                  AS released_qty,
 
