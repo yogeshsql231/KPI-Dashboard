@@ -28,9 +28,9 @@ SELECT
     T0."CardCode"                                                    AS customer_code,
     T0."CardName"                                                    AS customer_name,
     CG."GroupName"                                                   AS customer_group,
-    -- Retail flag: adjust the match to your customer group naming. Defaults to
-    -- 1 when the business-partner group name contains 'Retail'.
-    CASE WHEN UPPER(COALESCE(CG."GroupName", '')) LIKE '%RETAIL%'
+    -- Retail flag: exact match on the SAP customer group 'Retail'
+    -- (OCRG.GroupName). Case/whitespace-insensitive.
+    CASE WHEN UPPER(TRIM(COALESCE(CG."GroupName", ''))) = 'RETAIL'
          THEN 1 ELSE 0 END                                           AS is_retail,
     -- Customer PO. One SO can carry several unique POs, so the PO is taken from
     -- the ORDER LINE (RDR1."PoNum" = "Customer's Purchase Order Number") and
@@ -95,23 +95,41 @@ SELECT
                 AND D1."BaseLine" = T1."LineNum"), 0) < T1."Quantity"
          THEN 'Yes' ELSE 'No' END                                   AS short_shipment,
 
-    -- late: promised ship date has passed and line not fully delivered
-    CASE WHEN T0."DocDueDate" < CURRENT_DATE
-              AND COALESCE((SELECT SUM(D1."Quantity") FROM "DAMASCUS_BAKERY"."DLN1" D1
+    -- late: the actual delivery happened AFTER the promised date, or the promise
+    -- has passed and the line is still not fully delivered. Promised date =
+    -- line required date (RDR1.ShipDate), falling back to header DocDueDate.
+    CASE
+        WHEN (SELECT MAX(D1."DocDate") FROM "DAMASCUS_BAKERY"."DLN1" D1
+              WHERE D1."BaseType" = 17 AND D1."BaseEntry" = T1."DocEntry"
+                AND D1."BaseLine" = T1."LineNum")
+             > COALESCE(T1."ShipDate", T0."DocDueDate")
+            THEN 'Yes'
+        WHEN COALESCE((SELECT SUM(D1."Quantity") FROM "DAMASCUS_BAKERY"."DLN1" D1
               WHERE D1."BaseType" = 17 AND D1."BaseEntry" = T1."DocEntry"
                 AND D1."BaseLine" = T1."LineNum"), 0) < T1."Quantity"
-         THEN 'Yes' ELSE 'No' END                                   AS late_shipment,
+             AND COALESCE(T1."ShipDate", T0."DocDueDate") < CURRENT_DATE
+            THEN 'Yes'
+        ELSE 'No'
+    END                                                             AS late_shipment,
 
     CASE WHEN COALESCE((SELECT SUM(D1."Quantity") FROM "DAMASCUS_BAKERY"."DLN1" D1
               WHERE D1."BaseType" = 17 AND D1."BaseEntry" = T1."DocEntry"
                 AND D1."BaseLine" = T1."LineNum"), 0) >= T1."Quantity"
          THEN 'Yes' ELSE 'No' END                                   AS complete_shipment,
 
-    -- OTIF: complete AND on/before promised date
+    -- OTIF: fully delivered (in-full) AND the last delivery landed on/before the
+    -- promised date (on-time). Promised date = line required date (RDR1.ShipDate),
+    -- falling back to header DocDueDate. Undelivered lines are never OTIF.
     CASE WHEN COALESCE((SELECT SUM(D1."Quantity") FROM "DAMASCUS_BAKERY"."DLN1" D1
               WHERE D1."BaseType" = 17 AND D1."BaseEntry" = T1."DocEntry"
                 AND D1."BaseLine" = T1."LineNum"), 0) >= T1."Quantity"
-              AND T0."DocDueDate" >= CURRENT_DATE
+              AND (SELECT MAX(D1."DocDate") FROM "DAMASCUS_BAKERY"."DLN1" D1
+              WHERE D1."BaseType" = 17 AND D1."BaseEntry" = T1."DocEntry"
+                AND D1."BaseLine" = T1."LineNum") IS NOT NULL
+              AND (SELECT MAX(D1."DocDate") FROM "DAMASCUS_BAKERY"."DLN1" D1
+              WHERE D1."BaseType" = 17 AND D1."BaseEntry" = T1."DocEntry"
+                AND D1."BaseLine" = T1."LineNum")
+             <= COALESCE(T1."ShipDate", T0."DocDueDate")
          THEN 'Yes' ELSE 'No' END                                   AS otif,
 
     CASE WHEN T1."Quantity" > 0
