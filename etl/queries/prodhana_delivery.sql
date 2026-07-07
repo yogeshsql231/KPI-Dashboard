@@ -134,10 +134,9 @@ SELECT
 
     -- OTIF: order fully delivered (in-full, WHOLE-ORDER) AND this line's last
     -- delivery landed on/before the promised date + 1 day grace (on-time).
-    -- Promised date = line required date (RDR1.ShipDate), fallback header
-    -- DocDueDate. NOTE: promised-date source is pending confirmation (Raj).
-    -- Customer-pickup orders use the same actual pickup/delivery date as
-    -- delivered orders (per user) -- no special-casing.
+    -- Promised date = line required date (RDR1.ShipDate, confirmed by Raj),
+    -- fallback header DocDueDate. Customer-pickup orders use the same actual
+    -- pickup/delivery date as delivered orders (per user) -- no special-casing.
     CASE WHEN NOT EXISTS (
              SELECT 1 FROM "DAMASCUS_BAKERY"."RDR1" LO
              WHERE LO."DocEntry" = T1."DocEntry"
