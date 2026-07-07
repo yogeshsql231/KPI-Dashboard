@@ -39,7 +39,10 @@ SELECT
     COALESCE(NULLIF(T1."PoNum", ''), T0."NumAtCard")                 AS po_number,
     T1."ItemCode"                                                    AS item_code,
     T1."Dscription"                                                  AS item_description,
-    COALESCE(WH."WhsName", T1."WhsCode")                             AS warehouse,
+    -- Prefer the warehouse NAME; fall back to the code only when the name is
+    -- genuinely absent (NULL or blank/whitespace). TRIM avoids join misses from
+    -- trailing spaces on the code.
+    COALESCE(NULLIF(TRIM(WH."WhsName"), ''), T1."WhsCode")           AS warehouse,
 
     T1."Quantity"                                                    AS order_qty,
     NULL                                                             AS qty_pallet,
@@ -69,7 +72,9 @@ SELECT
           AND D1."BaseEntry" = T1."DocEntry"
           AND D1."BaseLine"  = T1."LineNum"
     ), 0)                                                           AS delivered_amount,
-    COALESCE(T1."PickQtty", 0)                                       AS pick_qty,
+    -- RDR1 has no picked-qty column on this HANA schema; pick status is tracked
+    -- via T1."PickStatus" below. Default pick_qty to 0 (not needed for the KPIs).
+    0                                                                AS pick_qty,
 
     CASE
         WHEN COALESCE((SELECT SUM(D1."Quantity") FROM "DAMASCUS_BAKERY"."DLN1" D1
@@ -119,7 +124,7 @@ SELECT
 
 FROM "DAMASCUS_BAKERY"."ORDR" T0
     INNER JOIN "DAMASCUS_BAKERY"."RDR1" T1 ON T1."DocEntry" = T0."DocEntry"
-    LEFT  JOIN "DAMASCUS_BAKERY"."OWHS" WH  ON WH."WhsCode" = T1."WhsCode"
+    LEFT  JOIN "DAMASCUS_BAKERY"."OWHS" WH  ON TRIM(WH."WhsCode") = TRIM(T1."WhsCode")
     LEFT  JOIN "DAMASCUS_BAKERY"."OSHP" SHP ON SHP."TrnspCode" = T0."TrnspCode"
     LEFT  JOIN "DAMASCUS_BAKERY"."OCRD" BP  ON BP."CardCode" = T0."CardCode"
     LEFT  JOIN "DAMASCUS_BAKERY"."OCRG" CG  ON CG."GroupCode" = BP."GroupCode"

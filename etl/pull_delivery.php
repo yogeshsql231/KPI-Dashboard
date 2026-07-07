@@ -43,10 +43,11 @@ if (PHP_SAPI !== 'cli') {
     exit(1);
 }
 
-$opts = getopt('', ['source:', 'query:', 'via:', 'dry-run', 'limit::']);
+$opts = getopt('', ['source:', 'query:', 'via:', 'dry-run', 'print-sql', 'limit::']);
 $source = strtoupper((string) ($opts['source'] ?? 'PRODHANA'));
 $via    = isset($opts['via']) ? trim((string) $opts['via']) : '';
 $dryRun = array_key_exists('dry-run', $opts);
+$printSql = array_key_exists('print-sql', $opts);
 $limit  = isset($opts['limit']) ? (int) $opts['limit'] : 0;
 
 $queryFile = (string) ($opts['query'] ?? (__DIR__ . '/queries/' . strtolower($source) . '_delivery.sql'));
@@ -82,6 +83,13 @@ if ($via !== '') {
     if (strlen($inner) > 7900) {
         fwrite(STDERR, "[etl] warning: OPENQUERY inner query is " . strlen($inner) . " chars (limit ~8000).\n");
     }
+}
+
+// --print-sql: dump the exact SQL that would be sent to the source and exit
+// (useful for pasting into SSMS to see the remote provider's real error).
+if ($printSql) {
+    echo $sql . "\n";
+    exit(0);
 }
 
 /** Text columns copied through verbatim (nullified when empty). */
@@ -141,6 +149,12 @@ $target?->beginTransaction();
 try {
     while (($row = $stmt->fetch(PDO::FETCH_ASSOC)) !== false) {
         $read++;
+
+        // Normalise column-name case: HANA folds unquoted aliases to UPPERCASE
+        // (and returns them that way through the linked server), while our
+        // expected column names are lowercase. Lowercasing keys makes the
+        // matching robust across all sources.
+        $row = array_change_key_case($row, CASE_LOWER);
 
         if (!$checkedColumns) {
             $missing = array_diff($expected, array_keys($row));
