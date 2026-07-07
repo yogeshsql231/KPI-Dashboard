@@ -121,17 +121,26 @@ SELECT
         ELSE 'No'
     END                                                             AS late_shipment,
 
-    CASE WHEN COALESCE((SELECT SUM(D1."Quantity") FROM "DAMASCUS_BAKERY"."DLN1" D1
-              WHERE D1."BaseType" = 17 AND D1."BaseEntry" = T1."DocEntry"
-                AND D1."BaseLine" = T1."LineNum"), 0) >= T1."Quantity"
+    -- complete / in-full is measured at the WHOLE-ORDER level: 'Yes' only when
+    -- NO line on the order is short-delivered (delivered < ordered).
+    CASE WHEN NOT EXISTS (
+             SELECT 1 FROM "DAMASCUS_BAKERY"."RDR1" LC
+             WHERE LC."DocEntry" = T1."DocEntry"
+               AND COALESCE((SELECT SUM(D1."Quantity") FROM "DAMASCUS_BAKERY"."DLN1" D1
+                     WHERE D1."BaseType" = 17 AND D1."BaseEntry" = LC."DocEntry"
+                       AND D1."BaseLine" = LC."LineNum"), 0) < LC."Quantity")
          THEN 'Yes' ELSE 'No' END                                   AS complete_shipment,
 
-    -- OTIF: fully delivered (in-full) AND the last delivery landed on/before the
-    -- promised date (on-time). Promised date = line required date (RDR1.ShipDate),
-    -- falling back to header DocDueDate. Undelivered lines are never OTIF.
-    CASE WHEN COALESCE((SELECT SUM(D1."Quantity") FROM "DAMASCUS_BAKERY"."DLN1" D1
-              WHERE D1."BaseType" = 17 AND D1."BaseEntry" = T1."DocEntry"
-                AND D1."BaseLine" = T1."LineNum"), 0) >= T1."Quantity"
+    -- OTIF: order fully delivered (in-full, WHOLE-ORDER) AND this line's last
+    -- delivery landed on/before the promised date (on-time, no grace period).
+    -- Promised date = line required date (RDR1.ShipDate), fallback header
+    -- DocDueDate. NOTE: promised-date source is pending confirmation (Raj).
+    CASE WHEN NOT EXISTS (
+             SELECT 1 FROM "DAMASCUS_BAKERY"."RDR1" LO
+             WHERE LO."DocEntry" = T1."DocEntry"
+               AND COALESCE((SELECT SUM(D1."Quantity") FROM "DAMASCUS_BAKERY"."DLN1" D1
+                     WHERE D1."BaseType" = 17 AND D1."BaseEntry" = LO."DocEntry"
+                       AND D1."BaseLine" = LO."LineNum"), 0) < LO."Quantity")
               AND (SELECT MAX(D1."DocDate") FROM "DAMASCUS_BAKERY"."DLN1" D1
               WHERE D1."BaseType" = 17 AND D1."BaseEntry" = T1."DocEntry"
                 AND D1."BaseLine" = T1."LineNum") IS NOT NULL
