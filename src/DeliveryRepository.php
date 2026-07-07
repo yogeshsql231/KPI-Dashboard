@@ -34,8 +34,10 @@ final class DeliveryRepository
                 COALESCE(SUM(delivered_qty), 0)                    AS delivered_qty,
                 COALESCE(SUM(released_qty), 0)                     AS released_qty,
                 COALESCE(SUM(pick_qty), 0)                         AS pick_qty,
-                CASE WHEN SUM(order_qty) > 0
-                     THEN SUM(delivered_qty) / SUM(order_qty) END  AS fill_rate,
+                -- Fill rate excludes canceled / not-picked lines (ifr_eligible = 0).
+                CASE WHEN SUM(CASE WHEN ifr_eligible = 1 THEN order_qty ELSE 0 END) > 0
+                     THEN SUM(CASE WHEN ifr_eligible = 1 THEN delivered_qty ELSE 0 END)
+                        / SUM(CASE WHEN ifr_eligible = 1 THEN order_qty ELSE 0 END) END AS fill_rate,
                 AVG(otif_flag)                                     AS otif_rate,
                 AVG(late_flag)                                     AS late_rate,
                 AVG(short_flag)                                    AS short_rate,
@@ -59,8 +61,9 @@ final class DeliveryRepository
                 COUNT(*)                     AS line_count,
                 COALESCE(SUM(order_qty), 0)  AS order_qty,
                 COALESCE(SUM(delivered_qty), 0) AS delivered_qty,
-                CASE WHEN SUM(order_qty) > 0
-                     THEN SUM(delivered_qty) / SUM(order_qty) END AS fill_rate,
+                CASE WHEN SUM(CASE WHEN ifr_eligible = 1 THEN order_qty ELSE 0 END) > 0
+                     THEN SUM(CASE WHEN ifr_eligible = 1 THEN delivered_qty ELSE 0 END)
+                        / SUM(CASE WHEN ifr_eligible = 1 THEN order_qty ELSE 0 END) END AS fill_rate,
                 AVG(otif_flag)               AS otif_rate
              FROM vw_delivery_lines
              WHERE $where
@@ -81,8 +84,9 @@ final class DeliveryRepository
                 COUNT(*)                     AS line_count,
                 COALESCE(SUM(order_qty), 0)  AS order_qty,
                 COALESCE(SUM(delivered_qty), 0) AS delivered_qty,
-                CASE WHEN SUM(order_qty) > 0
-                     THEN SUM(delivered_qty) / SUM(order_qty) END AS fill_rate
+                CASE WHEN SUM(CASE WHEN ifr_eligible = 1 THEN order_qty ELSE 0 END) > 0
+                     THEN SUM(CASE WHEN ifr_eligible = 1 THEN delivered_qty ELSE 0 END)
+                        / SUM(CASE WHEN ifr_eligible = 1 THEN order_qty ELSE 0 END) END AS fill_rate
              FROM vw_delivery_lines
              WHERE $where
              GROUP BY COALESCE(warehouse, 'Unassigned')
@@ -100,8 +104,9 @@ final class DeliveryRepository
             "SELECT
                 customer_name,
                 COALESCE(SUM(delivered_qty), 0) AS delivered_qty,
-                CASE WHEN SUM(order_qty) > 0
-                     THEN SUM(delivered_qty) / SUM(order_qty) END AS fill_rate
+                CASE WHEN SUM(CASE WHEN ifr_eligible = 1 THEN order_qty ELSE 0 END) > 0
+                     THEN SUM(CASE WHEN ifr_eligible = 1 THEN delivered_qty ELSE 0 END)
+                        / SUM(CASE WHEN ifr_eligible = 1 THEN order_qty ELSE 0 END) END AS fill_rate
              FROM vw_delivery_lines
              WHERE $where
              GROUP BY customer_name

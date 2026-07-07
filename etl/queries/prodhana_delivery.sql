@@ -20,8 +20,12 @@
 SELECT
     TO_VARCHAR(T1."DocEntry") || '-' || TO_VARCHAR(T1."LineNum")      AS source_key,
     TO_VARCHAR(T0."DocNum")                                          AS sales_order,
-    CASE T0."DocStatus" WHEN 'O' THEN 'Open'
-                        WHEN 'C' THEN 'Closed' ELSE T0."DocStatus" END AS so_status,
+    -- Canceled orders are surfaced as their own status so they can be excluded
+    -- from fill-rate/IFR (they never shipped by design).
+    CASE WHEN T0."CANCELED" = 'Y' THEN 'Cancelled'
+         WHEN T0."DocStatus" = 'O' THEN 'Open'
+         WHEN T0."DocStatus" = 'C' THEN 'Closed'
+         ELSE T0."DocStatus" END                                     AS so_status,
     T0."DocDate"                                                     AS posting_date,
     T0."DocDueDate"                                                  AS ship_date,
     T1."ShipDate"                                                    AS required_date,
