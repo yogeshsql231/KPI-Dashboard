@@ -104,19 +104,20 @@ SELECT
                 AND D1."BaseLine" = T1."LineNum"), 0) < T1."Quantity"
          THEN 'Yes' ELSE 'No' END                                   AS short_shipment,
 
-    -- late: the actual delivery happened AFTER the promised date, or the promise
-    -- has passed and the line is still not fully delivered. Promised date =
-    -- line required date (RDR1.ShipDate), falling back to header DocDueDate.
+    -- late: the actual delivery happened MORE THAN ONE DAY after the promised
+    -- date, or the promise (+1 day grace) has passed and the line is still not
+    -- fully delivered. Grace period = 1 day. Promised date = line required date
+    -- (RDR1.ShipDate), falling back to header DocDueDate.
     CASE
         WHEN (SELECT MAX(D1."DocDate") FROM "DAMASCUS_BAKERY"."DLN1" D1
               WHERE D1."BaseType" = 17 AND D1."BaseEntry" = T1."DocEntry"
                 AND D1."BaseLine" = T1."LineNum")
-             > COALESCE(T1."ShipDate", T0."DocDueDate")
+             > ADD_DAYS(COALESCE(T1."ShipDate", T0."DocDueDate"), 1)
             THEN 'Yes'
         WHEN COALESCE((SELECT SUM(D1."Quantity") FROM "DAMASCUS_BAKERY"."DLN1" D1
               WHERE D1."BaseType" = 17 AND D1."BaseEntry" = T1."DocEntry"
                 AND D1."BaseLine" = T1."LineNum"), 0) < T1."Quantity"
-             AND COALESCE(T1."ShipDate", T0."DocDueDate") < CURRENT_DATE
+             AND ADD_DAYS(COALESCE(T1."ShipDate", T0."DocDueDate"), 1) < CURRENT_DATE
             THEN 'Yes'
         ELSE 'No'
     END                                                             AS late_shipment,
@@ -132,9 +133,11 @@ SELECT
          THEN 'Yes' ELSE 'No' END                                   AS complete_shipment,
 
     -- OTIF: order fully delivered (in-full, WHOLE-ORDER) AND this line's last
-    -- delivery landed on/before the promised date (on-time, no grace period).
+    -- delivery landed on/before the promised date + 1 day grace (on-time).
     -- Promised date = line required date (RDR1.ShipDate), fallback header
     -- DocDueDate. NOTE: promised-date source is pending confirmation (Raj).
+    -- NOTE: customer-pickup orders need a separate on-time basis (readiness
+    -- date, not actual pickup) -- pending the pickup availability-date decision.
     CASE WHEN NOT EXISTS (
              SELECT 1 FROM "DAMASCUS_BAKERY"."RDR1" LO
              WHERE LO."DocEntry" = T1."DocEntry"
@@ -147,7 +150,7 @@ SELECT
               AND (SELECT MAX(D1."DocDate") FROM "DAMASCUS_BAKERY"."DLN1" D1
               WHERE D1."BaseType" = 17 AND D1."BaseEntry" = T1."DocEntry"
                 AND D1."BaseLine" = T1."LineNum")
-             <= COALESCE(T1."ShipDate", T0."DocDueDate")
+             <= ADD_DAYS(COALESCE(T1."ShipDate", T0."DocDueDate"), 1)
          THEN 'Yes' ELSE 'No' END                                   AS otif,
 
     CASE WHEN T1."Quantity" > 0
