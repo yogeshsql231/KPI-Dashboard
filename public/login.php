@@ -30,7 +30,7 @@ function safeReturn(?string $r): string
 Auth::boot();
 $return = safeReturn($_GET['return'] ?? $_POST['return'] ?? null);
 
-if (Auth::check()) {
+if (!Auth::enabled() || Auth::check()) {
     header('Location: ' . $return);
     exit;
 }
