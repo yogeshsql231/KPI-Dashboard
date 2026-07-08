@@ -134,6 +134,14 @@ final class Auth
             return null;
         }
 
+        // AD usually refuses a simple bind over plaintext ("Strong(er)
+        // authentication required"), so credentials must travel over TLS
+        // (ldaps:// or StartTLS). Domain controllers typically present an
+        // AD-issued cert that OpenSSL on the web server won't trust, so allow
+        // the requirement to be relaxed for the LAN via LDAP_TLS_REQCERT. This
+        // MUST be set on the global (null) handle BEFORE ldap_connect().
+        self::applyTlsReqCert();
+
         $conn = @ldap_connect($url);
         if ($conn === false) {
             error_log('Auth: ldap_connect failed for ' . $url);
@@ -212,6 +220,30 @@ final class Auth
             }
         }
         return false;
+    }
+
+    /**
+     * Relax (or enforce) TLS certificate verification for LDAPS / StartTLS.
+     * LDAP_TLS_REQCERT: never | allow | try | demand | hard. For an on-prem DC
+     * with a self-signed / AD-issued cert, "never" lets the encrypted bind
+     * succeed without a trusted CA chain on the web server.
+     */
+    private static function applyTlsReqCert(): void
+    {
+        if (!defined('LDAP_OPT_X_TLS_REQUIRE_CERT')) {
+            return;
+        }
+        $map = [
+            'never'  => LDAP_OPT_X_TLS_NEVER,
+            'allow'  => LDAP_OPT_X_TLS_ALLOW,
+            'try'    => LDAP_OPT_X_TLS_TRY,
+            'demand' => LDAP_OPT_X_TLS_DEMAND,
+            'hard'   => LDAP_OPT_X_TLS_HARD,
+        ];
+        $level = strtolower((string) env('LDAP_TLS_REQCERT', 'never'));
+        if (isset($map[$level])) {
+            @ldap_set_option(null, LDAP_OPT_X_TLS_REQUIRE_CERT, $map[$level]);
+        }
     }
 
     private static function escapeDnValue(string $v): string

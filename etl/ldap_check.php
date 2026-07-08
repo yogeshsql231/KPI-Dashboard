@@ -43,6 +43,7 @@ line('[ok]   php-ldap extension loaded.');
 // 2. Read config.
 $url        = (string) env('LDAP_URL', '');
 $startTls   = (bool) env('LDAP_START_TLS', false);
+$reqcert    = strtolower((string) env('LDAP_TLS_REQCERT', 'never'));
 $pattern    = (string) env('LDAP_BIND_PATTERN', '%s');
 $baseDn     = (string) env('LDAP_BASE_DN', '');
 $userFilter = (string) env('LDAP_USER_FILTER', '(sAMAccountName=%s)');
@@ -50,6 +51,7 @@ $clevel     = strtolower((string) env('LDAP_CLEVEL_GROUP', ''));
 
 line('LDAP_URL           = ' . ($url !== '' ? $url : '(empty!)'));
 line('LDAP_START_TLS     = ' . ($startTls ? 'true' : 'false'));
+line('LDAP_TLS_REQCERT   = ' . $reqcert);
 line('LDAP_BIND_PATTERN  = ' . $pattern);
 line('LDAP_BASE_DN       = ' . ($baseDn !== '' ? $baseDn : '(empty)'));
 line('LDAP_USER_FILTER   = ' . $userFilter);
@@ -58,6 +60,19 @@ line('LDAP_CLEVEL_GROUP  = ' . ($clevel !== '' ? $clevel : '(empty)'));
 if ($url === '') {
     line('[FAIL] LDAP_URL is empty in .env.');
     exit(1);
+}
+
+// Relax TLS cert verification for ldaps:// / StartTLS against an on-prem DC
+// with a self-signed cert. Must be set on the global handle before connect.
+if (defined('LDAP_OPT_X_TLS_REQUIRE_CERT')) {
+    $map = [
+        'never'  => LDAP_OPT_X_TLS_NEVER,  'allow' => LDAP_OPT_X_TLS_ALLOW,
+        'try'    => LDAP_OPT_X_TLS_TRY,     'demand' => LDAP_OPT_X_TLS_DEMAND,
+        'hard'   => LDAP_OPT_X_TLS_HARD,
+    ];
+    if (isset($map[$reqcert])) {
+        @ldap_set_option(null, LDAP_OPT_X_TLS_REQUIRE_CERT, $map[$reqcert]);
+    }
 }
 
 // 3. Connect.
