@@ -177,6 +177,10 @@ if (isset($payments)) {
     }
 }
 
+// Summary shown on the collapsed "Late Pay" button: most recent month and
+// its late-paid total.
+$lpLatest = $lpRows === [] ? null : end($lpRows);
+
 $chartData = [
     'so'       => ['labels' => $soLabels, 'orders' => $soOrders, 'amount' => $soAmount],
     'top'      => ['labels' => $tcLabels, 'orders' => $tcOrders, 'amount' => $tcAmount],
@@ -257,8 +261,16 @@ $chartData = [
     <?php endif; ?>
 
     <button type="button" id="latePayToggle" class="lp-toggle" aria-expanded="false" aria-controls="latePayPanel">
-        <span class="lp-toggle-label">Late Pay</span>
-        <span class="lp-toggle-sub">Late deliveries vs late payments by month</span>
+        <span class="lp-toggle-head">
+            <span class="lp-toggle-label">Late Pay</span>
+            <span class="lp-toggle-sub">Late deliveries vs late payments by month</span>
+        </span>
+        <?php if ($lpLatest !== null): ?>
+        <span class="lp-toggle-stats">
+            <span class="lp-stat"><span class="lp-stat-k">Month</span><span class="lp-stat-v"><?= e($lpLatest['label']) ?></span></span>
+            <span class="lp-stat"><span class="lp-stat-k">Total Late Payment</span><span class="lp-stat-v"><?= money($lpLatest['paid_late']) ?></span></span>
+        </span>
+        <?php endif; ?>
         <span class="lp-toggle-caret" aria-hidden="true">▾</span>
     </button>
     <section id="latePayPanel" class="panel panel-wide lp-panel" hidden>

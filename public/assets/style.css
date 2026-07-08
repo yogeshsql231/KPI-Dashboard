@@ -215,9 +215,18 @@ body {
 }
 .lp-toggle:hover { box-shadow: 0 4px 12px rgba(37,99,235,.38); }
 .lp-toggle:active { transform: translateY(1px); }
+.lp-toggle-head { display: flex; align-items: baseline; gap: 12px; }
 .lp-toggle-label { font-size: 16px; font-weight: 700; letter-spacing: .3px; }
 .lp-toggle-sub { font-size: 12px; opacity: .85; font-weight: 400; }
-.lp-toggle-caret { margin-left: auto; font-size: 14px; transition: transform .2s; }
+.lp-toggle-stats { margin-left: auto; display: flex; gap: 26px; }
+.lp-stat { display: flex; flex-direction: column; line-height: 1.25; }
+.lp-stat-k { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; opacity: .8; }
+.lp-stat-v { font-size: 16px; font-weight: 700; }
+.lp-toggle-caret { margin-left: 22px; font-size: 14px; transition: transform .2s; }
+@media (max-width: 640px) {
+    .lp-toggle { flex-wrap: wrap; }
+    .lp-toggle-stats { margin-left: 0; width: 100%; gap: 20px; }
+}
 .lp-toggle.open .lp-toggle-caret { transform: rotate(180deg); }
 .lp-panel { margin-top: 12px; }
 
