@@ -172,6 +172,8 @@ if (isset($payments)) {
         $lpDrill[$m] = array_map(static fn ($r) => [
             'customer' => (string) $r['customer'],
             'orders'   => (int) $r['late_invoices'],
+            'days'     => $r['avg_days_late'] !== null ? (int) round((float) $r['avg_days_late']) : null,
+            'payMonth' => $r['last_paid_date'] !== null ? date('M Y', strtotime((string) $r['last_paid_date'])) : '—',
             'value'    => (float) $r['paid_late'],
         ], $payments->topLatePayers($m . '-01', $monthEnd, 0, 8));
     }
@@ -300,9 +302,9 @@ $chartData = [
                         <div class="lp-pie"><canvas id="chartLpDrill" height="200"></canvas></div>
                         <table class="lp-cust">
                             <thead>
-                                <tr><th>Customer</th><th class="num">Late Orders</th><th class="num">Paid Late $</th></tr>
+                                <tr><th>Customer</th><th class="num">Days Delayed</th><th>Payment Received</th><th class="num">Paid Late $</th></tr>
                             </thead>
-                            <tbody id="lpCustBody"><tr><td colspan="3" class="empty">—</td></tr></tbody>
+                            <tbody id="lpCustBody"><tr><td colspan="4" class="empty">—</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -505,11 +507,13 @@ $chartData = [
                 if (chart) { chart.destroy(); chart = null; }
 
                 if (!data.length) {
-                    body.innerHTML = '<tr><td colspan="3" class="empty">No late payments this month.</td></tr>';
+                    body.innerHTML = '<tr><td colspan="4" class="empty">No late payments this month.</td></tr>';
                     return;
                 }
                 body.innerHTML = data.map((d) =>
-                    '<tr><td>' + d.customer + '</td><td class="num">' + Number(d.orders).toLocaleString() +
+                    '<tr><td>' + d.customer +
+                    '</td><td class="num">' + (d.days == null ? '—' : Number(d.days).toLocaleString() + ' days') +
+                    '</td><td>' + d.payMonth +
                     '</td><td class="num">' + usd(d.value) + '</td></tr>').join('');
                 chart = new Chart(canvas, {
                     type: 'doughnut',

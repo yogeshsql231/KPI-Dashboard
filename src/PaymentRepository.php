@@ -102,6 +102,9 @@ final class PaymentRepository
                 AVG(CASE WHEN paid_date IS NOT NULL
                           AND DATEDIFF(paid_date, due_date) > $g
                          THEN DATEDIFF(paid_date, due_date) END)        AS avg_days_late,
+                MAX(CASE WHEN paid_date IS NOT NULL
+                          AND DATEDIFF(paid_date, due_date) > $g
+                         THEN paid_date END)                            AS last_paid_date,
                 SUM(CASE WHEN paid_date IS NOT NULL
                           AND DATEDIFF(paid_date, due_date) > $g
                          THEN 1 ELSE 0 END)                             AS late_invoices
