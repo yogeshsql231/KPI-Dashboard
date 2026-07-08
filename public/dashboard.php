@@ -45,10 +45,20 @@ function num(mixed $v): string
     return number_format((float) $v);
 }
 
+/** Format a pallet count with one decimal (case-to-pallet conversion is fractional). */
+function pallets(mixed $v): string
+{
+    if ($v === null || $v === '') {
+        return '—';
+    }
+    return number_format((float) $v, 1);
+}
+
 $error = null;
 $summary = [];
 $byDate = [];
 $byWarehouse = [];
+$warehouseCapacity = [];
 $topCustomers = [];
 $zeroDelivery = [];
 $opts = ['warehouse' => [], 'carrier' => [], 'so_status' => [], 'pick_status' => []];
@@ -60,6 +70,7 @@ try {
     $summary = $repo->summary($filters);
     $byDate = $repo->byDate($filters);
     $byWarehouse = $repo->byWarehouse($filters);
+    $warehouseCapacity = $repo->warehouseCapacity($filters);
     $topCustomers = $repo->topCustomers($filters, 10);
     $zeroDelivery = $repo->zeroDelivery($filters, 15);
     foreach (array_keys($opts) as $k) {
@@ -300,6 +311,34 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
                 <?php endforeach; ?>
                 <?php if ($byWarehouse === []): ?>
                     <tr><td colspan="5" class="empty">No data</td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </section>
+
+        <section class="panel">
+            <h2>Warehouse Capacity &amp; Pallets</h2>
+            <p class="panel-note">Pallets are case-to-pallet converted (SAP pallet count, else units/pallet, else the warehouse default). <strong>% of Capacity</strong> is pallets shipped in the selected period vs configured capacity &mdash; not live on-hand inventory. Set real capacities in the <code>warehouse_capacity</code> table.</p>
+            <table>
+                <thead><tr><th>Warehouse</th><th class="num">Capacity (pallets)</th><th class="num">Ordered Qty</th><th class="num">Delivered Qty</th><th class="num">Delivered Pallets</th><th class="num">% of Capacity</th></tr></thead>
+                <tbody>
+                <?php foreach ($warehouseCapacity as $r): ?>
+                    <?php
+                        $cap = ($r['pallet_capacity'] === null || (float) $r['pallet_capacity'] <= 0)
+                            ? null : (float) $r['pallet_capacity'];
+                        $util = $cap !== null ? ((float) $r['delivered_pallets']) / $cap : null;
+                    ?>
+                    <tr>
+                        <td><?= e($r['warehouse']) ?></td>
+                        <td class="num"><?= $cap !== null ? num($cap) : '<span class="muted">set capacity</span>' ?></td>
+                        <td class="num"><?= num($r['order_qty']) ?></td>
+                        <td class="num"><?= num($r['delivered_qty']) ?></td>
+                        <td class="num"><?= pallets($r['delivered_pallets']) ?></td>
+                        <td class="num"><?= $util !== null ? pct($util) : '—' ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if ($warehouseCapacity === []): ?>
+                    <tr><td colspan="6" class="empty">No data</td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>
