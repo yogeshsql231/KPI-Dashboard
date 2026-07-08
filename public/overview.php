@@ -215,6 +215,7 @@ $chartData = [
     <nav class="topnav">
         <a href="overview.php" class="active">Overview</a>
         <a href="dashboard.php">Delivery</a>
+        <a href="warehouse.php">Warehouse</a>
         <a href="dashboard_cs.php">Customer Service</a>
         <?php $authUser = Auth::user(); if ($authUser !== null): ?>
         <span class="user-chip">
