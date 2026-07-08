@@ -84,3 +84,57 @@ SELECT SO."DocNum", SO."CardName",
  WHERE ABS(SO.so_amt - IFNULL(DEL.del_amt,0)) > 0.01
     OR ABS(IFNULL(DEL.del_amt,0) - IFNULL(INV.inv_amt,0)) > 0.01
  ORDER BY ABS(SO.so_amt - IFNULL(INV.inv_amt,0)) DESC');
+
+
+-- ---------------------------------------------------------------------------
+-- STEP 3 — explain the Delivery-vs-Invoice gap for the month.
+-- (Invoices dated in May exceeded deliveries dated in May by ~$588K.)
+--
+-- Decomposes May invoice value by origin, so the excess over May deliveries is
+-- accounted for: invoices raised from a delivery (BaseType 15) split by whether
+-- that delivery was dated in-month or before; invoices billed DIRECT from the
+-- sales order (BaseType 17, no delivery doc); and manual/other invoices.
+-- ---------------------------------------------------------------------------
+SELECT * FROM OPENQUERY(PRODHANA, '
+SELECT
+    SUM(I1."LineTotal")                                                        AS invoice_total,
+    SUM(CASE WHEN I1."BaseType" = 15 AND DL."DocDate" BETWEEN ''2026-05-01'' AND ''2026-05-31''
+             THEN I1."LineTotal" ELSE 0 END)                                   AS from_may_deliveries,
+    SUM(CASE WHEN I1."BaseType" = 15 AND DL."DocDate" < ''2026-05-01''
+             THEN I1."LineTotal" ELSE 0 END)                                   AS from_pre_may_deliveries,
+    SUM(CASE WHEN I1."BaseType" = 17 THEN I1."LineTotal" ELSE 0 END)           AS direct_from_so,
+    SUM(CASE WHEN IFNULL(I1."BaseType", -1) NOT IN (15, 17)
+             THEN I1."LineTotal" ELSE 0 END)                                   AS manual_or_other
+  FROM "DAMASCUS_BAKERY"."OINV" I0
+  JOIN "DAMASCUS_BAKERY"."INV1" I1 ON I1."DocEntry" = I0."DocEntry"
+  LEFT JOIN "DAMASCUS_BAKERY"."DLN1" DL
+         ON I1."BaseType" = 15 AND DL."DocEntry" = I1."BaseEntry" AND DL."LineNum" = I1."BaseLine"
+ WHERE I0."DocDate" BETWEEN ''2026-05-01'' AND ''2026-05-31''
+   AND IFNULL(I0."CANCELED", ''N'') <> ''Y''');
+
+
+-- STEP 3b — the actual invoices making up the "excess" (direct-from-SO, manual,
+-- or billing a pre-May delivery). These are what push May invoices above May
+-- deliveries; hand this list to finance as the reconciliation of the gap.
+SELECT TOP 100 * FROM OPENQUERY(PRODHANA, '
+SELECT I0."DocNum" AS invoice_no, I0."DocDate" AS invoice_date, I0."CardName" AS customer,
+       CASE WHEN I1."BaseType" = 17 THEN ''Direct from SO''
+            WHEN I1."BaseType" = 15 THEN ''Bills pre-May delivery''
+            ELSE ''Manual / other'' END                              AS reason,
+       DL."DocNum" AS delivery_no, DL."DocDate" AS delivery_date,
+       SUM(I1."LineTotal")                                           AS line_value
+  FROM "DAMASCUS_BAKERY"."OINV" I0
+  JOIN "DAMASCUS_BAKERY"."INV1" I1 ON I1."DocEntry" = I0."DocEntry"
+  LEFT JOIN "DAMASCUS_BAKERY"."DLN1" DL
+         ON I1."BaseType" = 15 AND DL."DocEntry" = I1."BaseEntry" AND DL."LineNum" = I1."BaseLine"
+ WHERE I0."DocDate" BETWEEN ''2026-05-01'' AND ''2026-05-31''
+   AND IFNULL(I0."CANCELED", ''N'') <> ''Y''
+   AND ( I1."BaseType" = 17
+      OR IFNULL(I1."BaseType", -1) NOT IN (15, 17)
+      OR (I1."BaseType" = 15 AND DL."DocDate" < ''2026-05-01'') )
+ GROUP BY I0."DocNum", I0."DocDate", I0."CardName",
+          CASE WHEN I1."BaseType" = 17 THEN ''Direct from SO''
+               WHEN I1."BaseType" = 15 THEN ''Bills pre-May delivery''
+               ELSE ''Manual / other'' END,
+          DL."DocNum", DL."DocDate"
+ ORDER BY line_value DESC');
