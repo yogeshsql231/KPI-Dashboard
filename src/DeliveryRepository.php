@@ -161,6 +161,35 @@ final class DeliveryRepository
         return $v ?: null;
     }
 
+    /**
+     * Late deliveries grouped by month (YYYY-MM of posting_date), for the
+     * "Late Deliveries vs Late Payments" report. late_lines counts delivered
+     * lines flagged late; total_lines is all lines in the month (denominator
+     * for late %). Respects the current filter selection.
+     *
+     * @return array<string, array<string, mixed>> keyed by month
+     */
+    public function lateByMonth(DeliveryFilters $f): array
+    {
+        [$where, $params] = $f->clause();
+        $stmt = $this->pdo->prepare(
+            "SELECT
+                DATE_FORMAT(posting_date, '%Y-%m') AS ym,
+                COUNT(*)                           AS total_lines,
+                SUM(late_flag)                     AS late_lines
+             FROM vw_delivery_lines
+             WHERE $where AND posting_date IS NOT NULL
+             GROUP BY DATE_FORMAT(posting_date, '%Y-%m')
+             ORDER BY ym"
+        );
+        $stmt->execute($params);
+        $out = [];
+        foreach ($stmt->fetchAll() as $r) {
+            $out[(string) $r['ym']] = $r;
+        }
+        return $out;
+    }
+
     // -----------------------------------------------------------------------
     // v2 "Overview" dashboard: header KPIs (# and $) and chart feeds.
     // -----------------------------------------------------------------------

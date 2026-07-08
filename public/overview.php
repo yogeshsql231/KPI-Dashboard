@@ -20,6 +20,7 @@ require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../src/DeliveryRepository.php';
 require_once __DIR__ . '/../src/ComplaintRepository.php';
+require_once __DIR__ . '/../src/PaymentRepository.php';
 require_once __DIR__ . '/../src/DeliveryFilters.php';
 
 function e(mixed $v): string
@@ -88,6 +89,9 @@ $byWarehouse = [];
 $complaintSummary = ['complaints' => 0, 'lost_amount' => 0];
 $complaintsByMonth = [];
 $complaintsByReason = [];
+$lateDelMonths = [];
+$latePayMonths = [];
+$hasPayments = false;
 $opts = ['warehouse' => [], 'carrier' => [], 'so_status' => [], 'pick_status' => []];
 $lastRefreshed = null;
 $filters = DeliveryFilters::fromRequest($_GET);
@@ -105,6 +109,12 @@ try {
     $complaintSummary = $complaints->summary($filters);
     $complaintsByMonth = $complaints->byMonth($filters);
     $complaintsByReason = $complaints->byReason($filters, 8);
+
+    // Late deliveries (#) vs late-received payments ($) by month.
+    $payments = new PaymentRepository($pdo);
+    $lateDelMonths = $repo->lateByMonth($filters);
+    $latePayMonths = $payments->byMonth($filters->fromDate, $filters->toDate, 0);
+    $hasPayments = $payments->hasData();
 
     foreach (array_keys($opts) as $k) {
         $opts[$k] = $repo->options($k);
@@ -141,6 +151,12 @@ $hasComplaints = ($complaintSummary['complaints'] ?? 0) > 0;
 $hasRetail     = $retailCust !== [];
 $hasAmount     = ($ov['order_amount'] ?? 0) > 0;
 
+// Late-delivery vs late-payment: merge the two month sets into one sorted axis.
+$lpMonths  = array_values(array_unique(array_merge(array_keys($lateDelMonths), array_keys($latePayMonths))));
+sort($lpMonths);
+$lpLate     = array_map(static fn ($m) => isset($lateDelMonths[$m]) ? (int) $lateDelMonths[$m]['late_lines'] : 0, $lpMonths);
+$lpPaidLate = array_map(static fn ($m) => isset($latePayMonths[$m]) ? (float) $latePayMonths[$m]['paid_late'] : 0.0, $lpMonths);
+
 $chartData = [
     'so'       => ['labels' => $soLabels, 'orders' => $soOrders, 'amount' => $soAmount],
     'top'      => ['labels' => $tcLabels, 'orders' => $tcOrders, 'amount' => $tcAmount],
@@ -148,6 +164,7 @@ $chartData = [
     'wh'       => ['labels' => $whLabels, 'delivered' => $whDelivered],
     'comMonth' => ['labels' => $cmLabels, 'count' => $cmCount, 'lost' => $cmLost],
     'comReason' => ['labels' => $crLabels, 'count' => $crCount],
+    'latePay'  => ['labels' => $lpMonths, 'late' => $lpLate, 'paidLate' => $lpPaidLate],
 ];
 ?>
 <!DOCTYPE html>
@@ -256,6 +273,18 @@ $chartData = [
                 <p class="empty">Awaiting complaint data.</p>
             <?php endif; ?>
         </section>
+        <section class="panel panel-wide">
+            <h2>Late Deliveries vs Late Payments (# &amp; $)</h2>
+            <p class="panel-note">Per month: deliveries shipped late (bars) alongside how much of that month's invoiced $ was received after the customer's due date (line) — to see whether worse-delivery months also pay later.</p>
+            <?php if ($lpMonths === []): ?>
+                <p class="empty">No data in the selected range.</p>
+            <?php else: ?>
+                <canvas id="chartLatePay" height="200"></canvas>
+                <?php if (!$hasPayments): ?>
+                    <p class="panel-note">Late-payment $ populate once the A/R payment ETL loads <code>ar_payments</code> (migration <code>006</code> + <code>etl/pull_payments.php</code>). The late-delivery bars are live from the current cache.</p>
+                <?php endif; ?>
+            <?php endif; ?>
+        </section>
     </div>
 
     <footer class="footer">
@@ -265,6 +294,7 @@ $chartData = [
     <script>
         const DATA = <?= json_encode($chartData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
         const HAS_AMOUNT = <?= $hasAmount ? 'true' : 'false' ?>;
+        const HAS_PAYMENTS = <?= $hasPayments ? 'true' : 'false' ?>;
 
         // --- shared palette + global look ------------------------------------
         const BLUE = '#3b82f6', TEAL = '#0d9488', AMBER = '#f59e0b', SLATE = '#64748b';
@@ -391,6 +421,41 @@ $chartData = [
                 data: { labels: DATA.comReason.labels,
                     datasets: [{ data: DATA.comReason.count, backgroundColor: PIE, borderWidth: 2, borderColor: '#fff', hoverOffset: 6 }] },
                 options: { cutout: '58%', plugins: { legend: { position: 'right' } } }
+            });
+        })();
+        // 7. Late deliveries (# bars) vs late-received payments ($ line). The $
+        // line only appears once the A/R payment cache is loaded (HAS_PAYMENTS).
+        (function () {
+            const el = document.getElementById('chartLatePay');
+            if (!el) return;
+            const d = DATA.latePay;
+            const datasets = [bar('Late Deliveries', d.late, '#ef4444', { yAxisID: 'y' })];
+            if (HAS_PAYMENTS) {
+                datasets.push({
+                    type: 'line', label: 'Paid Late $', data: d.paidLate, yAxisID: 'y1',
+                    borderColor: AMBER, backgroundColor: AMBER, borderWidth: 2,
+                    pointRadius: 3, pointHoverRadius: 5, tension: 0.35, fill: false
+                });
+            }
+            new Chart(el, {
+                data: { labels: d.labels, datasets },
+                options: {
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: HAS_PAYMENTS },
+                        tooltip: { callbacks: { label: (c) => c.dataset.yAxisID === 'y1'
+                            ? ' ' + c.dataset.label + ': ' + usd(c.parsed.y)
+                            : ' ' + c.dataset.label + ': ' + Number(c.parsed.y).toLocaleString() } }
+                    },
+                    scales: {
+                        x:  { grid: { display: false }, ticks: { maxRotation: 0, autoSkipPadding: 12 } },
+                        y:  { position: 'left', beginAtZero: true, border: { display: false },
+                              grid: { color: GRID }, ticks: { precision: 0 } },
+                        y1: { position: 'right', display: HAS_PAYMENTS, beginAtZero: true,
+                              border: { display: false }, grid: { drawOnChartArea: false },
+                              ticks: { callback: (v) => usd(v) } }
+                    }
+                }
             });
         })();
     </script>
