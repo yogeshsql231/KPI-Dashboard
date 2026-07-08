@@ -18,10 +18,14 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/DeliveryRepository.php';
 require_once __DIR__ . '/../src/ComplaintRepository.php';
 require_once __DIR__ . '/../src/PaymentRepository.php';
 require_once __DIR__ . '/../src/DeliveryFilters.php';
+
+Auth::requireLogin();
+$canSeeFinancials = Auth::isCLevel();
 
 function e(mixed $v): string
 {
@@ -212,6 +216,13 @@ $chartData = [
         <a href="overview.php" class="active">Overview</a>
         <a href="dashboard.php">Delivery</a>
         <a href="dashboard_cs.php">Customer Service</a>
+        <?php $authUser = Auth::user(); if ($authUser !== null): ?>
+        <span class="user-chip">
+            <span class="user-name"><?= e($authUser['name']) ?></span>
+            <?php if ($canSeeFinancials): ?><span class="user-role">C-level</span><?php endif; ?>
+            <a href="logout.php" class="user-logout">Sign out</a>
+        </span>
+        <?php endif; ?>
     </nav>
 </header>
 
@@ -254,14 +265,17 @@ $chartData = [
         <div class="card neutral"><div class="card-label">Total PO</div><div class="card-value"><?= num($ov['total_po'] ?? 0) ?></div><div class="card-target">customer POs</div></div>
         <div class="card good"><div class="card-label">Delivered Qty</div><div class="card-value"><?= num($ov['delivered_qty'] ?? 0) ?></div><div class="card-target">of <?= num($ov['order_qty'] ?? 0) ?> ordered</div></div>
         <div class="card neutral"><div class="card-label">Total Pallets</div><div class="card-value"><?= num($ov['total_pallets'] ?? 0) ?></div><div class="card-target">delivered pallets</div></div>
+        <?php if ($canSeeFinancials): ?>
         <div class="card good"><div class="card-label">Order Value</div><div class="card-value"><?= money($ov['order_amount'] ?? 0) ?></div><div class="card-target">net line total</div></div>
         <div class="card good"><div class="card-label">Delivered Value</div><div class="card-value"><?= money($ov['delivered_amount'] ?? 0) ?></div><div class="card-target">shipped $</div></div>
+        <?php endif; ?>
     </section>
 
-    <?php if (!$hasAmount): ?>
+    <?php if (!$hasAmount && $canSeeFinancials): ?>
         <div class="note">Dollar values populate once the SAP ETL loads <code>line_amount</code>/<code>delivered_amount</code>. Counts, quantities and pallets are live from the current cache.</div>
     <?php endif; ?>
 
+    <?php if ($canSeeFinancials): ?>
     <button type="button" id="latePayToggle" class="lp-toggle" aria-expanded="false" aria-controls="latePayPanel">
         <span class="lp-toggle-head">
             <span class="lp-toggle-label">Late Pay</span>
@@ -314,6 +328,7 @@ $chartData = [
             <?php endif; ?>
         <?php endif; ?>
     </section>
+    <?php endif; /* canSeeFinancials */ ?>
 
     <div class="chart-grid">
         <section class="panel">
@@ -360,7 +375,8 @@ $chartData = [
 
     <script>
         const DATA = <?= json_encode($chartData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-        const HAS_AMOUNT = <?= $hasAmount ? 'true' : 'false' ?>;
+        // $ series are also gated to C-level users (see Auth); staff see counts only.
+        const HAS_AMOUNT = <?= ($hasAmount && $canSeeFinancials) ? 'true' : 'false' ?>;
 
         // --- shared palette + global look ------------------------------------
         const BLUE = '#3b82f6', TEAL = '#0d9488', AMBER = '#f59e0b', SLATE = '#64748b';

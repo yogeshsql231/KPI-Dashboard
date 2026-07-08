@@ -9,13 +9,17 @@ declare(strict_types=1);
  * tiles, and a filter bar (date range, warehouse, SO, PO, carrier, SO status,
  * pick status). Auto-refreshes every 30 min (plus a manual Refresh button).
  * Reads ONLY from the local delivery_lines cache, which the SAP ETL refreshes.
- * No user login yet (per current scope).
+ * Requires a signed-in network account (see src/Auth.php).
  */
 
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/DeliveryRepository.php';
 require_once __DIR__ . '/../src/DeliveryFilters.php';
+
+Auth::requireLogin();
+$canSeeFinancials = Auth::isCLevel();
 
 /** HTML-escape helper. */
 function e(mixed $v): string
@@ -148,6 +152,13 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
         <a href="overview.php">Overview</a>
         <a href="dashboard.php" class="active">Delivery</a>
         <a href="dashboard_cs.php">Customer Service</a>
+        <?php $authUser = Auth::user(); if ($authUser !== null): ?>
+        <span class="user-chip">
+            <span class="user-name"><?= e($authUser['name']) ?></span>
+            <?php if ($canSeeFinancials): ?><span class="user-role">C-level</span><?php endif; ?>
+            <a href="logout.php" class="user-logout">Sign out</a>
+        </span>
+        <?php endif; ?>
     </nav>
 </header>
 
