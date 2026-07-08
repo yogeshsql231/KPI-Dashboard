@@ -108,6 +108,7 @@ body {
 .wh-btn:hover { background: var(--bg); }
 .wh-btn.active { background: var(--brand); color: #fff; border-color: var(--brand); }
 .panel-note { margin: 0 0 12px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+.muted { color: var(--muted); font-style: italic; }
 .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; }
 .pill.bad { background: #fee2e2; color: #b91c1c; }
 .pill.warn { background: #fef9c3; color: #a16207; }

@@ -96,6 +96,57 @@ final class DeliveryRepository
         return $stmt->fetchAll();
     }
 
+    /**
+     * Per-warehouse pallet throughput vs configured capacity (case-to-pallet
+     * conversion). Pallets per line are taken from the SAP pallet count
+     * (qty_pallet); if that is missing, converted from delivered_qty using the
+     * line's units/pallet (qty_per_pallet); if that is also missing, the
+     * remaining qty is converted with the warehouse's cases_per_pallet default
+     * (warehouse_capacity). pallet_capacity comes from the warehouse_capacity
+     * config (NULL until a real number is filled in).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function warehouseCapacity(DeliveryFilters $f): array
+    {
+        [$where, $params] = $f->clause();
+        $stmt = $this->pdo->prepare(
+            "SELECT
+                t.warehouse                       AS warehouse,
+                wc.pallet_capacity                AS pallet_capacity,
+                t.order_qty                       AS order_qty,
+                t.delivered_qty                   AS delivered_qty,
+                t.pallets_known
+                    + CASE WHEN wc.cases_per_pallet IS NOT NULL AND wc.cases_per_pallet > 0
+                           THEN t.qty_unconverted / wc.cases_per_pallet ELSE 0 END AS delivered_pallets
+             FROM (
+                SELECT
+                    COALESCE(warehouse, 'Unassigned') AS warehouse,
+                    COALESCE(SUM(order_qty), 0)       AS order_qty,
+                    COALESCE(SUM(delivered_qty), 0)   AS delivered_qty,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN qty_pallet IS NOT NULL AND qty_pallet > 0
+                                THEN qty_pallet
+                            WHEN qty_per_pallet IS NOT NULL AND qty_per_pallet > 0
+                                THEN delivered_qty / qty_per_pallet
+                            ELSE 0
+                        END), 0)                      AS pallets_known,
+                    COALESCE(SUM(
+                        CASE WHEN (qty_pallet IS NULL OR qty_pallet <= 0)
+                              AND (qty_per_pallet IS NULL OR qty_per_pallet <= 0)
+                             THEN delivered_qty ELSE 0 END), 0) AS qty_unconverted
+                FROM vw_delivery_lines
+                WHERE $where
+                GROUP BY COALESCE(warehouse, 'Unassigned')
+             ) t
+             LEFT JOIN warehouse_capacity wc ON wc.warehouse = t.warehouse
+             ORDER BY delivered_pallets DESC"
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
     /** @return array<int, array<string, mixed>> */
     public function topCustomers(DeliveryFilters $f, int $limit = 10): array
     {
