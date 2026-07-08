@@ -204,6 +204,23 @@ body {
 .chart-grid .panel .empty { margin: auto 0; }
 .chart-grid .panel-wide { grid-column: 1 / -1; }
 
+/* "Late Pay" toggle button below the KPI cards, and its collapsible panel. */
+.lp-toggle {
+    display: flex; align-items: center; gap: 14px; width: 100%;
+    margin: 18px 0 0; padding: 14px 20px;
+    background: linear-gradient(90deg, var(--brand), #2563eb);
+    color: #fff; border: none; border-radius: 12px; cursor: pointer;
+    box-shadow: 0 2px 6px rgba(37,99,235,.28); text-align: left;
+    transition: box-shadow .15s, transform .05s;
+}
+.lp-toggle:hover { box-shadow: 0 4px 12px rgba(37,99,235,.38); }
+.lp-toggle:active { transform: translateY(1px); }
+.lp-toggle-label { font-size: 16px; font-weight: 700; letter-spacing: .3px; }
+.lp-toggle-sub { font-size: 12px; opacity: .85; font-weight: 400; }
+.lp-toggle-caret { margin-left: auto; font-size: 14px; transition: transform .2s; }
+.lp-toggle.open .lp-toggle-caret { transform: rotate(180deg); }
+.lp-panel { margin-top: 12px; }
+
 /* Late-deliveries-vs-late-payments block: month list + click-to-drill panel. */
 .lp-split { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.4fr); gap: 20px; align-items: start; }
 .lp-months th, .lp-months td { padding: 8px 10px; }

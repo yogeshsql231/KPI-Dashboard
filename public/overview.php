@@ -256,6 +256,51 @@ $chartData = [
         <div class="note">Dollar values populate once the SAP ETL loads <code>line_amount</code>/<code>delivered_amount</code>. Counts, quantities and pallets are live from the current cache.</div>
     <?php endif; ?>
 
+    <button type="button" id="latePayToggle" class="lp-toggle" aria-expanded="false" aria-controls="latePayPanel">
+        <span class="lp-toggle-label">Late Pay</span>
+        <span class="lp-toggle-sub">Late deliveries vs late payments by month</span>
+        <span class="lp-toggle-caret" aria-hidden="true">▾</span>
+    </button>
+    <section id="latePayPanel" class="panel panel-wide lp-panel" hidden>
+        <h2>Late Deliveries vs Late Payments by Month</h2>
+        <p class="panel-note">Late deliveries alongside how much of that month's invoiced $ was received after the customer's due date. Click a month to see the customers driving its late payments.</p>
+        <?php if ($lpRows === []): ?>
+            <p class="empty">No data in the selected range.</p>
+        <?php else: ?>
+            <div class="lp-split">
+                <table class="lp-months">
+                    <thead>
+                        <tr><th>Month</th><th class="num">Late Deliveries</th><th class="num">Paid Late $</th></tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($lpRows as $r): ?>
+                        <tr class="lp-row" data-month="<?= e($r['ym']) ?>" data-label="<?= e($r['label']) ?>">
+                            <td><?= e($r['label']) ?></td>
+                            <td class="num"><?= num($r['late']) ?><span class="muted"> / <?= num($r['total']) ?></span></td>
+                            <td class="num"><?= money($r['paid_late']) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <div class="lp-drill">
+                    <div id="lpDrillHead" class="lp-drill-head">Select a month to drill in →</div>
+                    <div class="lp-drill-body">
+                        <div class="lp-pie"><canvas id="chartLpDrill" height="200"></canvas></div>
+                        <table class="lp-cust">
+                            <thead>
+                                <tr><th>Customer</th><th class="num">Late Orders</th><th class="num">Paid Late $</th></tr>
+                            </thead>
+                            <tbody id="lpCustBody"><tr><td colspan="3" class="empty">—</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <?php if (!$hasPayments): ?>
+                <p class="panel-note">Late-payment $ populate once the A/R payment ETL loads <code>ar_payments</code> (migration <code>006</code> + <code>etl/pull_payments.php</code>). The late-delivery counts are live from the current cache.</p>
+            <?php endif; ?>
+        <?php endif; ?>
+    </section>
+
     <div class="chart-grid">
         <section class="panel">
             <h2>Sales-Order Performance (# &amp; $)</h2>
@@ -291,45 +336,6 @@ $chartData = [
                 <canvas id="chartReasons" height="220"></canvas>
             <?php else: ?>
                 <p class="empty">Awaiting complaint data.</p>
-            <?php endif; ?>
-        </section>
-        <section class="panel panel-wide">
-            <h2>Late Deliveries vs Late Payments by Month</h2>
-            <p class="panel-note">Late deliveries alongside how much of that month's invoiced $ was received after the customer's due date. Click a month to see the customers driving its late payments.</p>
-            <?php if ($lpRows === []): ?>
-                <p class="empty">No data in the selected range.</p>
-            <?php else: ?>
-                <div class="lp-split">
-                    <table class="lp-months">
-                        <thead>
-                            <tr><th>Month</th><th class="num">Late Deliveries</th><th class="num">Paid Late $</th></tr>
-                        </thead>
-                        <tbody>
-                        <?php foreach ($lpRows as $r): ?>
-                            <tr class="lp-row" data-month="<?= e($r['ym']) ?>" data-label="<?= e($r['label']) ?>">
-                                <td><?= e($r['label']) ?></td>
-                                <td class="num"><?= num($r['late']) ?><span class="muted"> / <?= num($r['total']) ?></span></td>
-                                <td class="num"><?= money($r['paid_late']) ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                    <div class="lp-drill">
-                        <div id="lpDrillHead" class="lp-drill-head">Select a month to drill in →</div>
-                        <div class="lp-drill-body">
-                            <div class="lp-pie"><canvas id="chartLpDrill" height="200"></canvas></div>
-                            <table class="lp-cust">
-                                <thead>
-                                    <tr><th>Customer</th><th class="num">Late Orders</th><th class="num">Paid Late $</th></tr>
-                                </thead>
-                                <tbody id="lpCustBody"><tr><td colspan="3" class="empty">—</td></tr></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-                <?php if (!$hasPayments): ?>
-                    <p class="panel-note">Late-payment $ populate once the A/R payment ETL loads <code>ar_payments</code> (migration <code>006</code> + <code>etl/pull_payments.php</code>). The late-delivery counts are live from the current cache.</p>
-                <?php endif; ?>
             <?php endif; ?>
         </section>
     </div>
@@ -506,9 +512,33 @@ $chartData = [
             }
 
             rows.forEach((r) => r.addEventListener('click', () => render(r.dataset.month, r.dataset.label)));
-            // Open the most recent month by default.
-            const last = rows[rows.length - 1];
-            render(last.dataset.month, last.dataset.label);
+
+            // The panel is collapsed behind the "Late Pay" button; render the
+            // default (most recent) month only on first open so the doughnut
+            // sizes correctly (Chart.js can't measure a hidden canvas).
+            const toggle = document.getElementById('latePayToggle');
+            const panel = document.getElementById('latePayPanel');
+            let inited = false;
+            if (toggle && panel) {
+                toggle.addEventListener('click', () => {
+                    const open = panel.hasAttribute('hidden');
+                    if (open) {
+                        panel.removeAttribute('hidden');
+                        toggle.setAttribute('aria-expanded', 'true');
+                        toggle.classList.add('open');
+                        if (!inited) {
+                            const last = rows[rows.length - 1];
+                            render(last.dataset.month, last.dataset.label);
+                            inited = true;
+                        }
+                        panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    } else {
+                        panel.setAttribute('hidden', '');
+                        toggle.setAttribute('aria-expanded', 'false');
+                        toggle.classList.remove('open');
+                    }
+                });
+            }
         })();
     </script>
 
