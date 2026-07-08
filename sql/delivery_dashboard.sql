@@ -79,7 +79,13 @@ SELECT
     CASE WHEN UPPER(COALESCE(late_shipment, ''))   IN ('YES','Y','1','TRUE') THEN 1 ELSE 0 END AS late_flag,
     CASE WHEN UPPER(COALESCE(short_shipment, ''))  IN ('YES','Y','1','TRUE') THEN 1 ELSE 0 END AS short_flag,
     CASE WHEN UPPER(COALESCE(complete_shipment,'')) IN ('YES','Y','1','TRUE') THEN 1 ELSE 0 END AS complete_flag,
-    CASE WHEN COALESCE(delivered_qty, 0) = 0 THEN 1 ELSE 0 END AS zero_delivery_flag
+    CASE WHEN COALESCE(delivered_qty, 0) = 0 THEN 1 ELSE 0 END AS zero_delivery_flag,
+    -- Fill-rate / IFR eligibility: canceled orders and lines never picked are
+    -- excluded from the fill-rate denominator (they were never meant to ship,
+    -- so they shouldn't drag the metric down).
+    CASE WHEN UPPER(COALESCE(so_status, ''))   IN ('CANCELLED','CANCELED')
+           OR UPPER(COALESCE(pick_status, '')) = 'NOT PICKED'
+         THEN 0 ELSE 1 END AS ifr_eligible
 FROM delivery_lines dl;
 
 -- ---------------------------------------------------------------------------

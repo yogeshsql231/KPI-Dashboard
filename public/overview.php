@@ -183,13 +183,13 @@ $chartData = [
         <div class="card neutral"><div class="card-label">Total SO</div><div class="card-value"><?= num($ov['total_so'] ?? 0) ?></div><div class="card-target">sales orders</div></div>
         <div class="card neutral"><div class="card-label">Total PO</div><div class="card-value"><?= num($ov['total_po'] ?? 0) ?></div><div class="card-target">customer POs</div></div>
         <div class="card good"><div class="card-label">Delivered Qty</div><div class="card-value"><?= num($ov['delivered_qty'] ?? 0) ?></div><div class="card-target">of <?= num($ov['order_qty'] ?? 0) ?> ordered</div></div>
-        <div class="card neutral"><div class="card-label">Total Pallets</div><div class="card-value"><?= num($ov['total_pallets'] ?? 0) ?></div><div class="card-target">delivered ÷ bags-per-pallet</div></div>
+        <div class="card neutral"><div class="card-label">Total Pallets</div><div class="card-value"><?= num($ov['total_pallets'] ?? 0) ?></div><div class="card-target">delivered pallets</div></div>
         <div class="card good"><div class="card-label">Order Value</div><div class="card-value"><?= money($ov['order_amount'] ?? 0) ?></div><div class="card-target">net line total</div></div>
         <div class="card good"><div class="card-label">Delivered Value</div><div class="card-value"><?= money($ov['delivered_amount'] ?? 0) ?></div><div class="card-target">shipped $</div></div>
     </section>
 
     <?php if (!$hasAmount): ?>
-        <div class="note">Dollar values and pallet counts populate once the SAP ETL loads <code>line_amount</code>/<code>delivered_amount</code>/<code>qty_per_pallet</code> (added to the ETL query). Counts and quantities are live from the current cache.</div>
+        <div class="note">Dollar values populate once the SAP ETL loads <code>line_amount</code>/<code>delivered_amount</code>. Counts, quantities and pallets are live from the current cache.</div>
     <?php endif; ?>
 
     <div class="chart-grid">
