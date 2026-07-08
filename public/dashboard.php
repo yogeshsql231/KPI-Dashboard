@@ -59,7 +59,7 @@ try {
     $topCustomers = $repo->topCustomers($filters, 10);
     $zeroDelivery = $repo->zeroDelivery($filters, 15);
     foreach (array_keys($opts) as $k) {
-        $opts[$k] = $repo->options($k);
+        $opts[$k] = $repo->options($k, $filters);
     }
     $lastRefreshed = $repo->lastRefreshed();
 } catch (Throwable $ex) {

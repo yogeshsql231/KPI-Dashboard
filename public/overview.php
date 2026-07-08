@@ -117,7 +117,7 @@ try {
     $hasPayments = $payments->hasData();
 
     foreach (array_keys($opts) as $k) {
-        $opts[$k] = $repo->options($k);
+        $opts[$k] = $repo->options($k, $filters);
     }
     $lastRefreshed = $repo->lastRefreshed();
 } catch (Throwable $ex) {
