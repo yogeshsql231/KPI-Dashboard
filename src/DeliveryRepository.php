@@ -122,7 +122,7 @@ final class DeliveryRepository
     {
         [$where, $params] = $f->clause();
         $stmt = $this->pdo->prepare(
-            "SELECT sales_order, po_number, customer_name, item_code, warehouse,
+            "SELECT sales_order, po_number, customer_name, item_code, item_description, warehouse,
                     order_qty, pick_status
              FROM vw_delivery_lines
              WHERE $where AND zero_delivery_flag = 1
