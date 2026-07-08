@@ -26,9 +26,22 @@ final class Auth
         }
     }
 
+    /**
+     * Master switch. When AUTH_ENABLED=false the whole login layer is bypassed:
+     * pages don't require sign-in and everyone sees all panels (the pre-auth
+     * behaviour). Flip it back to true to re-enable LDAP/dev sign-in.
+     */
+    public static function enabled(): bool
+    {
+        return env('AUTH_ENABLED', true) !== false;
+    }
+
     /** @return array{username:string,name:string,role:string}|null */
     public static function user(): ?array
     {
+        if (!self::enabled()) {
+            return null;
+        }
         self::boot();
         $u = $_SESSION['auth_user'] ?? null;
         return is_array($u) ? $u : null;
@@ -41,6 +54,9 @@ final class Auth
 
     public static function isCLevel(): bool
     {
+        if (!self::enabled()) {
+            return true; // login disabled -> full visibility (pre-auth behaviour)
+        }
         $u = self::user();
         return $u !== null && $u['role'] === self::ROLE_CLEVEL;
     }
@@ -51,7 +67,7 @@ final class Auth
      */
     public static function requireLogin(?string $return = null): void
     {
-        if (self::check()) {
+        if (!self::enabled() || self::check()) {
             return;
         }
         $target = 'login.php';
