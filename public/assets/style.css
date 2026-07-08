@@ -203,7 +203,20 @@ body {
 .chart-grid .panel canvas { flex: 1 1 auto; }
 .chart-grid .panel .empty { margin: auto 0; }
 .chart-grid .panel-wide { grid-column: 1 / -1; }
-.chart-grid .panel-wide canvas { max-height: 300px; }
+
+/* Late-deliveries-vs-late-payments block: month list + click-to-drill panel. */
+.lp-split { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.4fr); gap: 20px; align-items: start; }
+.lp-months th, .lp-months td { padding: 8px 10px; }
+.lp-row { cursor: pointer; transition: background .12s; }
+.lp-row:hover { background: var(--bg); }
+.lp-row.active { background: #eff6ff; box-shadow: inset 3px 0 0 var(--brand); }
+.lp-months .muted { color: var(--muted); font-weight: 400; }
+.lp-drill-head { font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 10px; }
+.lp-drill-body { display: flex; flex-direction: column; gap: 14px; }
+.lp-pie { max-height: 220px; }
+.lp-pie canvas { max-height: 220px; }
+.lp-cust th, .lp-cust td { padding: 6px 10px; font-size: 13px; }
+@media (max-width: 760px) { .lp-split { grid-template-columns: 1fr; } }
 
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }

@@ -154,8 +154,28 @@ $hasAmount     = ($ov['order_amount'] ?? 0) > 0;
 // Late-delivery vs late-payment: merge the two month sets into one sorted axis.
 $lpMonths  = array_values(array_unique(array_merge(array_keys($lateDelMonths), array_keys($latePayMonths))));
 sort($lpMonths);
-$lpLate     = array_map(static fn ($m) => isset($lateDelMonths[$m]) ? (int) $lateDelMonths[$m]['late_lines'] : 0, $lpMonths);
-$lpPaidLate = array_map(static fn ($m) => isset($latePayMonths[$m]) ? (float) $latePayMonths[$m]['paid_late'] : 0.0, $lpMonths);
+
+// Per-month rows for the compact table, plus a customer drill-down (top late
+// payers for that month) rendered client-side when a month row is clicked.
+$lpRows  = [];
+$lpDrill = [];
+if (isset($payments)) {
+    foreach ($lpMonths as $m) {
+        $lpRows[] = [
+            'ym'        => $m,
+            'label'     => date('M Y', strtotime($m . '-01')),
+            'late'      => isset($lateDelMonths[$m]) ? (int) $lateDelMonths[$m]['late_lines'] : 0,
+            'total'     => isset($lateDelMonths[$m]) ? (int) $lateDelMonths[$m]['total_lines'] : 0,
+            'paid_late' => isset($latePayMonths[$m]) ? (float) $latePayMonths[$m]['paid_late'] : 0.0,
+        ];
+        $monthEnd = date('Y-m-t', strtotime($m . '-01'));
+        $lpDrill[$m] = array_map(static fn ($r) => [
+            'customer' => (string) $r['customer'],
+            'orders'   => (int) $r['late_invoices'],
+            'value'    => (float) $r['paid_late'],
+        ], $payments->topLatePayers($m . '-01', $monthEnd, 0, 8));
+    }
+}
 
 $chartData = [
     'so'       => ['labels' => $soLabels, 'orders' => $soOrders, 'amount' => $soAmount],
@@ -164,7 +184,7 @@ $chartData = [
     'wh'       => ['labels' => $whLabels, 'delivered' => $whDelivered],
     'comMonth' => ['labels' => $cmLabels, 'count' => $cmCount, 'lost' => $cmLost],
     'comReason' => ['labels' => $crLabels, 'count' => $crCount],
-    'latePay'  => ['labels' => $lpMonths, 'late' => $lpLate, 'paidLate' => $lpPaidLate],
+    'latePayDrill' => $lpDrill,
 ];
 ?>
 <!DOCTYPE html>
@@ -274,14 +294,41 @@ $chartData = [
             <?php endif; ?>
         </section>
         <section class="panel panel-wide">
-            <h2>Late Deliveries vs Late Payments (# &amp; $)</h2>
-            <p class="panel-note">Per month: deliveries shipped late (bars) alongside how much of that month's invoiced $ was received after the customer's due date (line) — to see whether worse-delivery months also pay later.</p>
-            <?php if ($lpMonths === []): ?>
+            <h2>Late Deliveries vs Late Payments by Month</h2>
+            <p class="panel-note">Late deliveries alongside how much of that month's invoiced $ was received after the customer's due date. Click a month to see the customers driving its late payments.</p>
+            <?php if ($lpRows === []): ?>
                 <p class="empty">No data in the selected range.</p>
             <?php else: ?>
-                <canvas id="chartLatePay" height="200"></canvas>
+                <div class="lp-split">
+                    <table class="lp-months">
+                        <thead>
+                            <tr><th>Month</th><th class="num">Late Deliveries</th><th class="num">Paid Late $</th></tr>
+                        </thead>
+                        <tbody>
+                        <?php foreach ($lpRows as $r): ?>
+                            <tr class="lp-row" data-month="<?= e($r['ym']) ?>" data-label="<?= e($r['label']) ?>">
+                                <td><?= e($r['label']) ?></td>
+                                <td class="num"><?= num($r['late']) ?><span class="muted"> / <?= num($r['total']) ?></span></td>
+                                <td class="num"><?= money($r['paid_late']) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                    <div class="lp-drill">
+                        <div id="lpDrillHead" class="lp-drill-head">Select a month to drill in →</div>
+                        <div class="lp-drill-body">
+                            <div class="lp-pie"><canvas id="chartLpDrill" height="200"></canvas></div>
+                            <table class="lp-cust">
+                                <thead>
+                                    <tr><th>Customer</th><th class="num">Late Orders</th><th class="num">Paid Late $</th></tr>
+                                </thead>
+                                <tbody id="lpCustBody"><tr><td colspan="3" class="empty">—</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
                 <?php if (!$hasPayments): ?>
-                    <p class="panel-note">Late-payment $ populate once the A/R payment ETL loads <code>ar_payments</code> (migration <code>006</code> + <code>etl/pull_payments.php</code>). The late-delivery bars are live from the current cache.</p>
+                    <p class="panel-note">Late-payment $ populate once the A/R payment ETL loads <code>ar_payments</code> (migration <code>006</code> + <code>etl/pull_payments.php</code>). The late-delivery counts are live from the current cache.</p>
                 <?php endif; ?>
             <?php endif; ?>
         </section>
@@ -294,7 +341,6 @@ $chartData = [
     <script>
         const DATA = <?= json_encode($chartData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
         const HAS_AMOUNT = <?= $hasAmount ? 'true' : 'false' ?>;
-        const HAS_PAYMENTS = <?= $hasPayments ? 'true' : 'false' ?>;
 
         // --- shared palette + global look ------------------------------------
         const BLUE = '#3b82f6', TEAL = '#0d9488', AMBER = '#f59e0b', SLATE = '#64748b';
@@ -423,40 +469,46 @@ $chartData = [
                 options: { cutout: '58%', plugins: { legend: { position: 'right' } } }
             });
         })();
-        // 7. Late deliveries (# bars) vs late-received payments ($ line). The $
-        // line only appears once the A/R payment cache is loaded (HAS_PAYMENTS).
+        // 7. Late-payments drill-down: click a month row to render that month's
+        // top late-paying customers as a doughnut (share of $) + a table.
         (function () {
-            const el = document.getElementById('chartLatePay');
-            if (!el) return;
-            const d = DATA.latePay;
-            const datasets = [bar('Late Deliveries', d.late, '#ef4444', { yAxisID: 'y' })];
-            if (HAS_PAYMENTS) {
-                datasets.push({
-                    type: 'line', label: 'Paid Late $', data: d.paidLate, yAxisID: 'y1',
-                    borderColor: AMBER, backgroundColor: AMBER, borderWidth: 2,
-                    pointRadius: 3, pointHoverRadius: 5, tension: 0.35, fill: false
+            const drill = DATA.latePayDrill || {};
+            const rows = Array.from(document.querySelectorAll('.lp-row'));
+            const head = document.getElementById('lpDrillHead');
+            const body = document.getElementById('lpCustBody');
+            const canvas = document.getElementById('chartLpDrill');
+            if (!rows.length || !canvas) return;
+            let chart = null;
+
+            function render(month, label) {
+                const data = drill[month] || [];
+                rows.forEach((r) => r.classList.toggle('active', r.dataset.month === month));
+                head.textContent = label + ' · top late-paying customers';
+                if (chart) { chart.destroy(); chart = null; }
+
+                if (!data.length) {
+                    body.innerHTML = '<tr><td colspan="3" class="empty">No late payments this month.</td></tr>';
+                    return;
+                }
+                body.innerHTML = data.map((d) =>
+                    '<tr><td>' + d.customer + '</td><td class="num">' + Number(d.orders).toLocaleString() +
+                    '</td><td class="num">' + usd(d.value) + '</td></tr>').join('');
+                chart = new Chart(canvas, {
+                    type: 'doughnut',
+                    data: { labels: data.map((d) => clip(d.customer, 22)),
+                        datasets: [{ data: data.map((d) => d.value), backgroundColor: PIE,
+                            borderWidth: 2, borderColor: '#fff', hoverOffset: 6 }] },
+                    options: { cutout: '58%', plugins: {
+                        legend: { position: 'right' },
+                        tooltip: { callbacks: { label: (c) => ' ' + c.label + ': ' + usd(c.parsed) } }
+                    } }
                 });
             }
-            new Chart(el, {
-                data: { labels: d.labels, datasets },
-                options: {
-                    interaction: { mode: 'index', intersect: false },
-                    plugins: {
-                        legend: { display: HAS_PAYMENTS },
-                        tooltip: { callbacks: { label: (c) => c.dataset.yAxisID === 'y1'
-                            ? ' ' + c.dataset.label + ': ' + usd(c.parsed.y)
-                            : ' ' + c.dataset.label + ': ' + Number(c.parsed.y).toLocaleString() } }
-                    },
-                    scales: {
-                        x:  { grid: { display: false }, ticks: { maxRotation: 0, autoSkipPadding: 12 } },
-                        y:  { position: 'left', beginAtZero: true, border: { display: false },
-                              grid: { color: GRID }, ticks: { precision: 0 } },
-                        y1: { position: 'right', display: HAS_PAYMENTS, beginAtZero: true,
-                              border: { display: false }, grid: { drawOnChartArea: false },
-                              ticks: { callback: (v) => usd(v) } }
-                    }
-                }
-            });
+
+            rows.forEach((r) => r.addEventListener('click', () => render(r.dataset.month, r.dataset.label)));
+            // Open the most recent month by default.
+            const last = rows[rows.length - 1];
+            render(last.dataset.month, last.dataset.label);
         })();
     </script>
 
