@@ -149,6 +149,10 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
             <label for="po">PO Number</label>
             <input type="text" id="po" name="po" placeholder="contains…" value="<?= e($filters->po) ?>">
         </div>
+        <div class="filter">
+            <label for="item">Item</label>
+            <input type="text" id="item" name="item" placeholder="code or description…" value="<?= e($filters->item) ?>">
+        </div>
         <?php
         selectFilter('carrier', 'Carrier', $opts['carrier'], $filters->carrier, 'All Carriers');
         selectFilter('so_status', 'SO Status', $opts['so_status'], $filters->soStatus, 'All');
@@ -289,7 +293,7 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
         <section class="panel">
             <h2>Zero-Delivery Lines</h2>
             <table>
-                <thead><tr><th>SO</th><th>PO</th><th>Customer</th><th>Item</th><th class="num">Ordered</th><th>Pick Status</th></tr></thead>
+                <thead><tr><th>SO</th><th>PO</th><th>Customer</th><th>Item</th><th>Description</th><th class="num">Ordered</th><th>Pick Status</th></tr></thead>
                 <tbody>
                 <?php foreach ($zeroDelivery as $r): ?>
                     <tr>
@@ -297,12 +301,13 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
                         <td><?= e($r['po_number']) ?></td>
                         <td><?= e($r['customer_name']) ?></td>
                         <td><?= e($r['item_code']) ?></td>
+                        <td><?= e($r['item_description']) ?></td>
                         <td class="num"><?= num($r['order_qty']) ?></td>
                         <td><?= e($r['pick_status']) ?></td>
                     </tr>
                 <?php endforeach; ?>
                 <?php if ($zeroDelivery === []): ?>
-                    <tr><td colspan="6" class="empty">No zero-delivery lines</td></tr>
+                    <tr><td colspan="7" class="empty">No zero-delivery lines</td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>

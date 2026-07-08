@@ -164,6 +164,10 @@ $chartData = [
             <label for="so">SO Number</label>
             <input type="text" id="so" name="so" placeholder="contains…" value="<?= e($filters->salesOrder) ?>">
         </div>
+        <div class="filter">
+            <label for="item">Item</label>
+            <input type="text" id="item" name="item" placeholder="code or description…" value="<?= e($filters->item) ?>">
+        </div>
         <?php
         selectFilter('carrier', 'Carrier', $opts['carrier'], $filters->carrier, 'All Carriers');
         selectFilter('so_status', 'SO Status', $opts['so_status'], $filters->soStatus, 'All');

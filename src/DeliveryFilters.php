@@ -18,6 +18,7 @@ final class DeliveryFilters
         public readonly ?string $carrier = null,
         public readonly ?string $soStatus = null,
         public readonly ?string $pickStatus = null,
+        public readonly ?string $item = null,
     ) {
     }
 
@@ -33,6 +34,7 @@ final class DeliveryFilters
             self::cleanText($q['carrier'] ?? null),
             self::cleanText($q['so_status'] ?? null),
             self::cleanText($q['pick_status'] ?? null),
+            self::cleanText($q['item'] ?? null),
         );
     }
 
@@ -78,6 +80,12 @@ final class DeliveryFilters
         if ($this->pickStatus !== null) {
             $conds[] = 'pick_status = ?';
             $params[] = $this->pickStatus;
+        }
+        if ($this->item !== null) {
+            // Match on item number OR description so users can search either.
+            $conds[] = '(item_code LIKE ? OR item_description LIKE ?)';
+            $params[] = '%' . $this->item . '%';
+            $params[] = '%' . $this->item . '%';
         }
 
         return [implode(' AND ', $conds), $params];
