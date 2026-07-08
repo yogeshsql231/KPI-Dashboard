@@ -105,6 +105,29 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
     }
     echo '</select></div>';
 }
+
+/**
+ * Render the warehouse filter as a row of one-click buttons (executive simplicity).
+ * The active warehouse is carried in a hidden field so the choice survives when
+ * other filters are applied; each button sets it and submits the form.
+ *
+ * @param array<int, string> $options
+ */
+function warehouseButtons(string $name, string $label, array $options, ?string $current): void
+{
+    $current = $current ?? '';
+    echo '<div class="filter filter-wh"><label>' . e($label) . '</label>';
+    echo '<input type="hidden" name="' . e($name) . '" value="' . e($current) . '">';
+    echo '<div class="wh-buttons">';
+    $allActive = $current === '' ? ' active' : '';
+    echo '<button type="button" class="wh-btn' . $allActive . '" onclick="pickWarehouse(this, \'\')">All</button>';
+    foreach ($options as $opt) {
+        $active = $current === $opt ? ' active' : '';
+        $arg = htmlspecialchars(json_encode($opt), ENT_QUOTES);
+        echo '<button type="button" class="wh-btn' . $active . '" onclick="pickWarehouse(this, ' . $arg . ')">' . e($opt) . '</button>';
+    }
+    echo '</div></div>';
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -139,7 +162,7 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
             <input type="date" id="to_date" name="to_date" value="<?= e($filters->toDate) ?>">
         </div>
         <?php
-        selectFilter('warehouse', 'Warehouse', $opts['warehouse'], $filters->warehouse, 'All Warehouses');
+        warehouseButtons('warehouse', 'Warehouse', $opts['warehouse'], $filters->warehouse);
         ?>
         <div class="filter">
             <label for="so">SO Number</label>
@@ -320,5 +343,12 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
 <footer class="footer">
     KPI Dashboard · Delivery / OMS · source: SAP Business One (PRODHANA) via local cache<?php if ($lastRefreshed): ?> · data refreshed <?= e($lastRefreshed) ?><?php endif; ?>
 </footer>
+<script>
+function pickWarehouse(btn, val) {
+    var form = btn.form;
+    form.elements['warehouse'].value = val;
+    form.submit();
+}
+</script>
 </body>
 </html>
