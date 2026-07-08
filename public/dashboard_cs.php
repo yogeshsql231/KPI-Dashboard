@@ -7,13 +7,17 @@ declare(strict_types=1);
  *
  * Renders the first set of Customer Service KPIs (OTIF, Item Fill Rate,
  * Shipped Short, Lead Time, Complaints, PO Revisions) straight from the
- * database views. No user login yet (per current scope).
+ * database views. Requires a signed-in network account (see src/Auth.php).
  */
 
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/KpiRepository.php';
 require_once __DIR__ . '/../src/Filters.php';
+
+Auth::requireLogin();
+$canSeeFinancials = Auth::isCLevel();
 
 /** HTML-escape helper. */
 function e(mixed $v): string
@@ -97,6 +101,13 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
         <a href="overview.php">Overview</a>
         <a href="dashboard.php">Delivery</a>
         <a href="dashboard_cs.php" class="active">Customer Service</a>
+        <?php $authUser = Auth::user(); if ($authUser !== null): ?>
+        <span class="user-chip">
+            <span class="user-name"><?= e($authUser['name']) ?></span>
+            <?php if ($canSeeFinancials): ?><span class="user-role">C-level</span><?php endif; ?>
+            <a href="logout.php" class="user-logout">Sign out</a>
+        </span>
+        <?php endif; ?>
     </nav>
 </header>
 
