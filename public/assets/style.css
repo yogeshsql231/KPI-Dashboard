@@ -114,6 +114,19 @@ body {
 .pill.good { background: #dcfce7; color: #15803d; }
 .pill.neutral { background: var(--bg); color: var(--muted); }
 .filter-actions { display: flex; gap: 8px; margin-left: auto; }
+
+/* Saved Views / Bookmarks control (injected by assets/views.js). */
+.filter-views .views-row { display: flex; gap: 6px; align-items: center; }
+.btn-view {
+    padding: 7px 12px;
+    background: #fff;
+    color: var(--ink);
+    border: 1px solid var(--border);
+    font-size: 13px;
+}
+.btn-view:hover { background: var(--bg); }
+.btn-view-del { color: #b91c1c; font-weight: 700; }
+.btn-view-del:hover { background: #fee2e2; border-color: #fecaca; }
 .btn {
     display: inline-block;
     padding: 8px 16px;

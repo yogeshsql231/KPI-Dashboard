@@ -350,5 +350,6 @@ function pickWarehouse(btn, val) {
     form.submit();
 }
 </script>
+<script src="assets/views.js"></script>
 </body>
 </html>
