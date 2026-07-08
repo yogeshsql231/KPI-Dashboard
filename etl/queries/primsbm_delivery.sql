@@ -49,4 +49,10 @@ SELECT
     ManualBOL         AS manual_bol,
     Carrier           AS carrier
 FROM dbo.KPI_DeliveryDashboardCache
-WHERE PostingDate >= DATEADD(DAY, -60, CAST(GETDATE() AS DATE));
+-- Rolling window aligned to the START of the month 12 months ago, so every
+-- month in range is COMPLETE. The old raw 60-day window (DATEADD(DAY,-60))
+-- chopped off the first days of the oldest month -- e.g. it dropped May 1-6,
+-- which made monthly totals read low. Month-aligned means monthly reporting
+-- always ties out.
+WHERE PostingDate >= DATEADD(MONTH, -12,
+        DATEADD(DAY, 1 - DAY(CAST(GETDATE() AS DATE)), CAST(GETDATE() AS DATE)));

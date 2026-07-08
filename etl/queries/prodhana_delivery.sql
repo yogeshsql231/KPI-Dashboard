@@ -170,5 +170,11 @@ FROM "DAMASCUS_BAKERY"."ORDR" T0
     LEFT  JOIN "DAMASCUS_BAKERY"."OSHP" SHP ON SHP."TrnspCode" = T0."TrnspCode"
     LEFT  JOIN "DAMASCUS_BAKERY"."OCRD" BP  ON BP."CardCode" = T0."CardCode"
     LEFT  JOIN "DAMASCUS_BAKERY"."OCRG" CG  ON CG."GroupCode" = BP."GroupCode"
-WHERE T0."DocDate" >= ADD_DAYS(CURRENT_DATE, -60)
+-- Rolling window aligned to the START of the month 12 months ago, so every
+-- month in range is COMPLETE. The old raw 60-day window (ADD_DAYS(-60)) chopped
+-- off the first days of the oldest month -- e.g. it dropped May 1-6, which made
+-- monthly totals (order/delivered value, SO/PO counts) read low. Month-aligned
+-- means monthly reporting always ties out.
+WHERE T0."DocDate" >= ADD_MONTHS(
+        TO_DATE(TO_VARCHAR(CURRENT_DATE, 'YYYY-MM') || '-01', 'YYYY-MM-DD'), -12)
 ORDER BY T0."DocDate", T0."DocNum", T1."LineNum";
