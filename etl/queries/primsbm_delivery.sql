@@ -49,4 +49,9 @@ SELECT
     ManualBOL         AS manual_bol,
     Carrier           AS carrier
 FROM dbo.KPI_DeliveryDashboardCache
-WHERE PostingDate >= DATEADD(DAY, -60, CAST(GETDATE() AS DATE));
+-- SCRUM-45: pull a full, month-aligned 12-month window (from the 1st of the
+-- month, 12 months back, through today) so every month in range is complete
+-- and history before the current month loads on the dashboard. (Was a rolling
+-- 60-day window, which left only ~2 months of data in the cache.) Matches the
+-- window used by prodhana_payments.sql.
+WHERE PostingDate >= DATEADD(MONTH, -12, DATEADD(DAY, 1 - DAY(CAST(GETDATE() AS DATE)), CAST(GETDATE() AS DATE)));
