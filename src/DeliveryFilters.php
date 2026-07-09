@@ -46,46 +46,67 @@ final class DeliveryFilters
      */
     public function clause(): array
     {
+        return $this->build(null);
+    }
+
+    /**
+     * Same as clause() but omits the conditions belonging to one filter
+     * dimension. Used to build cascading option lists: e.g. when listing the
+     * available carriers we keep every other active filter but drop the
+     * carrier condition, so the dropdown shows every carrier valid for the
+     * rest of the selection (and never hides the one already chosen).
+     *
+     * @return array{0:string,1:array<int,mixed>}
+     */
+    public function clauseExcept(?string $exceptField): array
+    {
+        return $this->build($exceptField);
+    }
+
+    /**
+     * @return array{0:string,1:array<int,mixed>}
+     */
+    private function build(?string $except): array
+    {
         $conds = ['1 = 1'];
         $params = [];
+        $add = static function (string $field, string $sql, array $vals) use (&$conds, &$params, $except): void {
+            if ($field === $except) {
+                return;
+            }
+            $conds[] = $sql;
+            foreach ($vals as $v) {
+                $params[] = $v;
+            }
+        };
 
         if ($this->fromDate !== null) {
-            $conds[] = 'posting_date >= ?';
-            $params[] = $this->fromDate;
+            $add('date', 'posting_date >= ?', [$this->fromDate]);
         }
         if ($this->toDate !== null) {
-            $conds[] = 'posting_date <= ?';
-            $params[] = $this->toDate;
+            $add('date', 'posting_date <= ?', [$this->toDate]);
         }
         if ($this->warehouse !== null) {
-            $conds[] = 'warehouse = ?';
-            $params[] = $this->warehouse;
+            $add('warehouse', 'warehouse = ?', [$this->warehouse]);
         }
         if ($this->salesOrder !== null) {
-            $conds[] = 'sales_order LIKE ?';
-            $params[] = '%' . $this->salesOrder . '%';
+            $add('so', 'sales_order LIKE ?', ['%' . $this->salesOrder . '%']);
         }
         if ($this->po !== null) {
-            $conds[] = 'po_number LIKE ?';
-            $params[] = '%' . $this->po . '%';
+            $add('po', 'po_number LIKE ?', ['%' . $this->po . '%']);
         }
         if ($this->carrier !== null) {
-            $conds[] = 'carrier = ?';
-            $params[] = $this->carrier;
+            $add('carrier', 'carrier = ?', [$this->carrier]);
         }
         if ($this->soStatus !== null) {
-            $conds[] = 'so_status = ?';
-            $params[] = $this->soStatus;
+            $add('so_status', 'so_status = ?', [$this->soStatus]);
         }
         if ($this->pickStatus !== null) {
-            $conds[] = 'pick_status = ?';
-            $params[] = $this->pickStatus;
+            $add('pick_status', 'pick_status = ?', [$this->pickStatus]);
         }
         if ($this->item !== null) {
             // Match on item number OR description so users can search either.
-            $conds[] = '(item_code LIKE ? OR item_description LIKE ?)';
-            $params[] = '%' . $this->item . '%';
-            $params[] = '%' . $this->item . '%';
+            $add('item', '(item_code LIKE ? OR item_description LIKE ?)', ['%' . $this->item . '%', '%' . $this->item . '%']);
         }
 
         return [implode(' AND ', $conds), $params];

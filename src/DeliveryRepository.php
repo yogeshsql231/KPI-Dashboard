@@ -184,8 +184,17 @@ final class DeliveryRepository
         return $stmt->fetchAll();
     }
 
-    /** @return array<int, string> distinct non-empty values of a whitelisted column */
-    public function options(string $column): array
+    /**
+     * Distinct non-empty values of a whitelisted column.
+     *
+     * When $f is given the list "cascades": it only returns values that still
+     * exist under the other active filters (the column's own condition is
+     * excluded so a chosen value is never hidden). The currently-selected
+     * value is always kept in the list. Passing null returns every value.
+     *
+     * @return array<int, string>
+     */
+    public function options(string $column, ?DeliveryFilters $f = null): array
     {
         $allowed = [
             'warehouse'   => 'warehouse',
@@ -199,11 +208,37 @@ final class DeliveryRepository
             return [];
         }
         $col = $allowed[$column];
-        $rows = $this->pdo->query(
-            "SELECT DISTINCT $col FROM delivery_lines
-             WHERE $col IS NOT NULL AND $col <> '' ORDER BY $col"
-        )->fetchAll(PDO::FETCH_COLUMN);
-        return array_map('strval', $rows);
+
+        if ($f === null) {
+            $rows = $this->pdo->query(
+                "SELECT DISTINCT $col FROM vw_delivery_lines
+                 WHERE $col IS NOT NULL AND $col <> '' ORDER BY $col"
+            )->fetchAll(PDO::FETCH_COLUMN);
+            return array_map('strval', $rows);
+        }
+
+        // 'customer' has no filter dimension of its own, so nothing to exclude.
+        [$where, $params] = $f->clauseExcept($column === 'customer' ? null : $column);
+        $stmt = $this->pdo->prepare(
+            "SELECT DISTINCT $col FROM vw_delivery_lines
+             WHERE $col IS NOT NULL AND $col <> '' AND $where ORDER BY $col"
+        );
+        $stmt->execute($params);
+        $out = array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+
+        // Never drop the value the user currently has selected.
+        $current = match ($column) {
+            'warehouse'   => $f->warehouse,
+            'carrier'     => $f->carrier,
+            'so_status'   => $f->soStatus,
+            'pick_status' => $f->pickStatus,
+            default       => null,
+        };
+        if ($current !== null && $current !== '' && !in_array($current, $out, true)) {
+            array_unshift($out, $current);
+            sort($out);
+        }
+        return $out;
     }
 
     public function lastRefreshed(): ?string
