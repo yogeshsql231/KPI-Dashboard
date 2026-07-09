@@ -219,6 +219,7 @@ $chartData = [
         <a href="dashboard.php">Delivery</a>
         <a href="warehouse.php">Warehouse</a>
         <a href="dashboard_cs.php">Customer Service</a>
+        <a href="audit.php">Audit</a>
         <?php $authUser = Auth::user(); if ($authUser !== null): ?>
         <span class="user-chip">
             <span class="user-name"><?= e($authUser['name']) ?></span>

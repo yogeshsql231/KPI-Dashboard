@@ -102,6 +102,7 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
         <a href="dashboard.php">Delivery</a>
         <a href="warehouse.php">Warehouse</a>
         <a href="dashboard_cs.php" class="active">Customer Service</a>
+        <a href="audit.php">Audit</a>
         <?php $authUser = Auth::user(); if ($authUser !== null): ?>
         <span class="user-chip">
             <span class="user-name"><?= e($authUser['name']) ?></span>
