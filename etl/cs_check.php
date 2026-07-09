@@ -7,10 +7,10 @@ declare(strict_types=1);
  *
  *   C:\xampp\php\php.exe etl\cs_check.php
  */
-require __DIR__ . '/../config/config.php';
-require __DIR__ . '/../config/database.php';
-require __DIR__ . '/../src/KpiRepository.php';
-require __DIR__ . '/../src/Filters.php';
+require_once __DIR__ . '/../config/config.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../src/KpiRepository.php';
+require_once __DIR__ . '/../src/Filters.php';
 
 echo "=== CS page (dashboard_cs.php) diagnostic ===\n";
 try {
