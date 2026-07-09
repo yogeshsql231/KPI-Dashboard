@@ -158,13 +158,29 @@ final class KpiRepository
         return array_map('strval', $rows);
     }
 
-    /** @return array<int, string> distinct warehouses for the filter dropdown */
+    /**
+     * @return array<int, string> distinct warehouses for the filter dropdown.
+     *
+     * The `warehouse` column is added by migration 002. On databases where that
+     * migration has not been applied yet the column is absent, so we degrade to
+     * an empty list (the dropdown just shows "All warehouses") instead of
+     * letting a missing optional filter take down the whole page.
+     */
     public function warehouseOptions(): array
     {
-        $rows = $this->pdo->query(
-            "SELECT DISTINCT warehouse FROM order_shipments
-             WHERE is_sample = 0 AND warehouse IS NOT NULL AND warehouse <> '' ORDER BY warehouse"
-        )->fetchAll(PDO::FETCH_COLUMN);
+        try {
+            $rows = $this->pdo->query(
+                "SELECT DISTINCT warehouse FROM order_shipments
+                 WHERE is_sample = 0 AND warehouse IS NOT NULL AND warehouse <> '' ORDER BY warehouse"
+            )->fetchAll(PDO::FETCH_COLUMN);
+        } catch (PDOException $e) {
+            // 42S22 = unknown column (migration 002 not applied). Not fatal for
+            // an optional dropdown — surface no warehouses rather than erroring.
+            if (($e->getCode() === '42S22')) {
+                return [];
+            }
+            throw $e;
+        }
         return array_map('strval', $rows);
     }
 
