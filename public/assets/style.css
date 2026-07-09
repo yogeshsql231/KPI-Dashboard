@@ -114,6 +114,12 @@ body {
 .pill.warn { background: #fef9c3; color: #a16207; }
 .pill.good { background: #dcfce7; color: #15803d; }
 .pill.neutral { background: var(--bg); color: var(--muted); }
+.pill.info { background: #e0f2fe; color: #0369a1; }
+/* Audit alert rows: tint the left edge by severity. */
+tr.sev-critical td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
+tr.sev-warning  td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+tr.sev-info     td:first-child { box-shadow: inset 3px 0 0 var(--neutral); }
+.audit-meta { font-size: 12px; color: var(--muted); margin: 0 0 12px; }
 .filter-actions { display: flex; gap: 8px; margin-left: auto; }
 
 /* Saved Views / Bookmarks control (injected by assets/views.js). */
