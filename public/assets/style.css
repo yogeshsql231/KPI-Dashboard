@@ -245,6 +245,23 @@ body {
 .lp-cust th, .lp-cust td { padding: 6px 10px; font-size: 13px; }
 @media (max-width: 760px) { .lp-split { grid-template-columns: 1fr; } }
 
+/* LPN (WMS pallet License Plate) panel on the Warehouse page. */
+.panel-note { color: var(--muted); font-size: 13px; margin: -4px 0 14px; }
+.lpn-stats { display: flex; flex-wrap: wrap; gap: 26px; margin-bottom: 16px; }
+.lpn-stat { display: flex; flex-direction: column; line-height: 1.25; }
+.lpn-stat-k { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; opacity: .8; }
+.lpn-stat-v { font-size: 20px; font-weight: 700; }
+.lpn-stat-warn .lpn-stat-v { color: var(--bad, #dc2626); }
+.lpn-split { display: grid; grid-template-columns: minmax(240px, .8fr) minmax(420px, 2fr); gap: 20px; align-items: start; }
+.lpn-wh th, .lpn-wh td { padding: 6px 10px; font-size: 13px; }
+.lpn-statusbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 13px; }
+.lpn-statusbar label { color: var(--muted); font-weight: 600; }
+.lpn-scroll { max-height: 460px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.lpn-detail th, .lpn-detail td { padding: 6px 10px; font-size: 13px; }
+.lpn-detail thead th { position: sticky; top: 0; background: var(--card, #fff); z-index: 1; }
+.lpn-expired { background: #fef2f2; }
+@media (max-width: 900px) { .lpn-split { grid-template-columns: 1fr; } }
+
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
 th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }

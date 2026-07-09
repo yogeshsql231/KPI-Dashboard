@@ -15,6 +15,7 @@ require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/DeliveryRepository.php';
+require_once __DIR__ . '/../src/LpnRepository.php';
 require_once __DIR__ . '/../src/DeliveryFilters.php';
 
 Auth::requireLogin();
@@ -58,6 +59,12 @@ $byWarehouse = [];
 $warehouseCapacity = [];
 $opts = ['warehouse' => []];
 $lastRefreshed = null;
+$lpnStatus = isset($_GET['lpn_status']) && is_string($_GET['lpn_status']) ? trim($_GET['lpn_status']) : '';
+$hasLpn = false;
+$lpnSummary = ['pallets' => 0, 'warehouses' => 0, 'items' => 0, 'total_qty' => 0, 'expired' => 0];
+$lpnByWarehouse = [];
+$lpnRows = [];
+$lpnStatusOpts = [];
 $filters = DeliveryFilters::fromRequest($_GET);
 
 try {
@@ -66,6 +73,17 @@ try {
     $warehouseCapacity = $repo->warehouseCapacity($filters);
     $opts['warehouse'] = $repo->options('warehouse');
     $lastRefreshed = $repo->lastRefreshed();
+
+    // LPN (License Plate Number) pallet detail for the warehouse team. Only
+    // shown once the WMS ETL has loaded lpn_pallets (migration 008 + pull_lpn.php).
+    $lpn = new LpnRepository(Database::connection());
+    $hasLpn = $lpn->hasData();
+    if ($hasLpn) {
+        $lpnSummary = $lpn->summary($filters);
+        $lpnByWarehouse = $lpn->byWarehouse($filters);
+        $lpnRows = $lpn->rows($filters, 200, $lpnStatus !== '' ? $lpnStatus : null);
+        $lpnStatusOpts = $lpn->options('status');
+    }
 } catch (Throwable $ex) {
     $error = 'Unable to load warehouse data. Import sql/delivery_dashboard.sql + run migration 005_warehouse_capacity.sql and check your .env database connection.';
 }
@@ -151,8 +169,8 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
         </div>
         <?php warehouseButtons('warehouse', 'Warehouse', $opts['warehouse'], $filters->warehouse); ?>
         <div class="filter">
-            <label for="item">Item</label>
-            <input type="text" id="item" name="item" placeholder="code or description…" value="<?= e($filters->item) ?>">
+            <label for="item">Item / LPN / Batch</label>
+            <input type="text" id="item" name="item" placeholder="code, desc, LPN, batch…" value="<?= e($filters->item) ?>">
         </div>
         <div class="filter-actions">
             <button type="submit" class="btn btn-primary">Apply</button>
@@ -238,6 +256,82 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
             </table>
         </section>
     </div>
+
+    <section class="panel panel-wide">
+        <h2>LPN &mdash; Pallet License Plates</h2>
+        <p class="panel-note">Live pallet detail (License Plate Numbers) from the WMS &mdash; contents, batch, bin location and status &mdash; to support the warehouse team. Filter by warehouse/item above; use the search box for an LPN, batch or bin. Source: Beas WMS pallet master via <code>lpn_pallets</code> (migration <code>008</code> + <code>etl/pull_lpn.php</code>).</p>
+
+        <?php if (!$hasLpn): ?>
+            <p class="empty">No LPN data loaded yet. Run migration <code>008_lpn_pallets.sql</code>, confirm the WMS column mapping with <code>etl/queries/lpn_discover_sqlsrv.sql</code>, then load it with <code>php etl/pull_lpn.php --source=PRIMSBM</code>.</p>
+        <?php else: ?>
+            <div class="lpn-stats">
+                <span class="lpn-stat"><span class="lpn-stat-v"><?= num($lpnSummary['pallets']) ?></span><span class="lpn-stat-k">Pallets</span></span>
+                <span class="lpn-stat"><span class="lpn-stat-v"><?= num($lpnSummary['warehouses']) ?></span><span class="lpn-stat-k">Warehouses</span></span>
+                <span class="lpn-stat"><span class="lpn-stat-v"><?= num($lpnSummary['items']) ?></span><span class="lpn-stat-k">Items</span></span>
+                <span class="lpn-stat"><span class="lpn-stat-v"><?= num($lpnSummary['total_qty']) ?></span><span class="lpn-stat-k">Total Qty</span></span>
+                <span class="lpn-stat<?= (int) $lpnSummary['expired'] > 0 ? ' lpn-stat-warn' : '' ?>"><span class="lpn-stat-v"><?= num($lpnSummary['expired']) ?></span><span class="lpn-stat-k">Expired</span></span>
+            </div>
+
+            <div class="lpn-split">
+                <table class="lpn-wh">
+                    <thead><tr><th>Warehouse</th><th class="num">Pallets</th><th class="num">Qty</th><th class="num">Expired</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($lpnByWarehouse as $r): ?>
+                        <tr>
+                            <td><?= e($r['warehouse']) ?></td>
+                            <td class="num"><?= num($r['pallets']) ?></td>
+                            <td class="num"><?= num($r['total_qty']) ?></td>
+                            <td class="num"><?= num($r['expired']) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+
+                <div class="lpn-detail">
+                    <?php if ($lpnStatusOpts !== []): ?>
+                    <form class="lpn-statusbar" method="get" action="warehouse.php">
+                        <?php foreach (['from_date','to_date','warehouse','item'] as $carry): ?>
+                            <?php $cv = $_GET[$carry] ?? ''; if (is_string($cv) && $cv !== ''): ?>
+                                <input type="hidden" name="<?= e($carry) ?>" value="<?= e($cv) ?>">
+                            <?php endif; ?>
+                        <?php endforeach; ?>
+                        <label for="lpn_status">Status</label>
+                        <select id="lpn_status" name="lpn_status" onchange="this.form.submit()">
+                            <option value="">All</option>
+                            <?php foreach ($lpnStatusOpts as $st): ?>
+                                <option value="<?= e($st) ?>"<?= $lpnStatus === $st ? ' selected' : '' ?>><?= e($st) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <span class="muted">showing up to 200 pallets</span>
+                    </form>
+                    <?php endif; ?>
+                    <div class="lpn-scroll">
+                    <table>
+                        <thead><tr><th>LPN</th><th>Status</th><th>Warehouse</th><th>Bin</th><th>Item</th><th>Batch</th><th class="num">Qty</th><th>Received</th><th>Expiry</th></tr></thead>
+                        <tbody>
+                        <?php foreach ($lpnRows as $r): ?>
+                            <tr<?= (int) $r['is_expired'] === 1 ? ' class="lpn-expired"' : '' ?>>
+                                <td><?= e($r['lpn']) ?></td>
+                                <td><?= e($r['status']) ?></td>
+                                <td><?= e($r['warehouse']) ?></td>
+                                <td><?= e($r['bin_location']) ?: '<span class="muted">—</span>' ?></td>
+                                <td><?= e($r['item_code']) ?><?php if ($r['item_description']): ?><span class="muted"> · <?= e($r['item_description']) ?></span><?php endif; ?></td>
+                                <td><?= e($r['batch_number']) ?: '<span class="muted">—</span>' ?></td>
+                                <td class="num"><?= $r['quantity'] !== null ? num($r['quantity']) . ' ' . e($r['unit_of_measure']) : '—' ?></td>
+                                <td><?= e($r['received_date']) ?: '<span class="muted">—</span>' ?></td>
+                                <td><?= e($r['expiry_date']) ?: '<span class="muted">—</span>' ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                        <?php if ($lpnRows === []): ?>
+                            <tr><td colspan="9" class="empty">No pallets match the current filters.</td></tr>
+                        <?php endif; ?>
+                        </tbody>
+                    </table>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
+    </section>
 
     <?php endif; ?>
 </main>
