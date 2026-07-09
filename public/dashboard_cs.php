@@ -282,5 +282,6 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
 <footer class="footer">
     KPI Dashboard · foundation build · data source: reference workbook (to be replaced by PRIMS / PRODHANA feeds)
 </footer>
+<script src="assets/views.js"></script>
 </body>
 </html>
