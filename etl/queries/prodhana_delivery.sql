@@ -170,5 +170,9 @@ FROM "DAMASCUS_BAKERY"."ORDR" T0
     LEFT  JOIN "DAMASCUS_BAKERY"."OSHP" SHP ON SHP."TrnspCode" = T0."TrnspCode"
     LEFT  JOIN "DAMASCUS_BAKERY"."OCRD" BP  ON BP."CardCode" = T0."CardCode"
     LEFT  JOIN "DAMASCUS_BAKERY"."OCRG" CG  ON CG."GroupCode" = BP."GroupCode"
-WHERE T0."DocDate" >= ADD_DAYS(CURRENT_DATE, -60)
+-- SCRUM-45: full, month-aligned 12-month window (1st of the month, 12 months
+-- back, through today) so every month in range is complete and history before
+-- the current month loads. (Was a rolling 60-day window.) Matches the window
+-- used by prodhana_payments.sql.
+WHERE T0."DocDate" >= ADD_MONTHS(ADD_DAYS(CURRENT_DATE, 1 - DAYOFMONTH(CURRENT_DATE)), -12)
 ORDER BY T0."DocDate", T0."DocNum", T1."LineNum";
