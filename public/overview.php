@@ -93,6 +93,7 @@ $byWarehouse = [];
 $complaintSummary = ['complaints' => 0, 'lost_amount' => 0];
 $complaintsByMonth = [];
 $complaintsByReason = [];
+$complaintsByType = [];
 $lateDelMonths = [];
 $latePayMonths = [];
 $hasPayments = false;
@@ -113,6 +114,7 @@ try {
     $complaintSummary = $complaints->summary($filters);
     $complaintsByMonth = $complaints->byMonth($filters);
     $complaintsByReason = $complaints->byReason($filters, 8);
+    $complaintsByType = $complaints->byConcernType($filters);
 
     // Late deliveries (#) vs late-received payments ($) by month.
     $payments = new PaymentRepository($pdo);
@@ -361,12 +363,31 @@ $chartData = [
             <?php endif; ?>
         </section>
         <section class="panel">
-            <h2>Complaint Types / Reasons (#)</h2>
+            <h2>Complaint Reasons (standardized) (#)</h2>
+            <p class="panel-note">Categories are normalized to the standard taxonomy (<code>complaint_categories</code>); free-text entries are mapped via <code>complaint_reason_map</code>.</p>
             <?php if ($hasComplaints): ?>
                 <canvas id="chartReasons" height="220"></canvas>
             <?php else: ?>
                 <p class="empty">Awaiting complaint data.</p>
             <?php endif; ?>
+        </section>
+        <section class="panel">
+            <h2>Complaints by Concern Type</h2>
+            <table>
+                <thead><tr><th>Concern Type</th><th class="num">Complaints</th><th class="num">Lost $</th></tr></thead>
+                <tbody>
+                <?php foreach ($complaintsByType as $r): ?>
+                    <tr>
+                        <td><?= e($r['concern_type']) ?></td>
+                        <td class="num"><?= number_format((int) $r['complaints']) ?></td>
+                        <td class="num"><?= '$' . number_format((float) $r['lost_amount'], 2) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if ($complaintsByType === []): ?>
+                    <tr><td colspan="3" class="empty">Awaiting complaint data.</td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
         </section>
     </div>
 

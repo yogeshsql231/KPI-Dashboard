@@ -66,19 +66,47 @@ final class ComplaintRepository
         return $stmt->fetchAll();
     }
 
-    /** Count by complaint type/reason. @return array<int, array<string, mixed>> */
+    /**
+     * Count by standardized concern reason (from vw_complaints, so free-text
+     * values are normalized to the canonical taxonomy). The label combines the
+     * category and reason, e.g. "Food Quality · Under-baked".
+     *
+     * @return array<int, array<string, mixed>>
+     */
     public function byReason(DeliveryFilters $f, int $limit = 10): array
     {
         [$where, $params] = $this->dateClause($f);
         $stmt = $this->pdo->prepare(
-            "SELECT COALESCE(NULLIF(reason, ''), complaint_type, 'Unspecified') AS reason,
+            "SELECT CONCAT(std_concern_type, ' · ', std_concern_reason) AS reason,
                     COUNT(*) AS complaints,
                     COALESCE(SUM(lost_amount), 0) AS lost_amount
-             FROM complaints
+             FROM vw_complaints
              WHERE $where
-             GROUP BY COALESCE(NULLIF(reason, ''), complaint_type, 'Unspecified')
+             GROUP BY std_concern_type, std_concern_reason
              ORDER BY complaints DESC
              LIMIT " . (int) $limit
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Count + lost $ by standardized concern type (top-level category), for the
+     * pareto/roll-up view.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function byConcernType(DeliveryFilters $f): array
+    {
+        [$where, $params] = $this->dateClause($f);
+        $stmt = $this->pdo->prepare(
+            "SELECT std_concern_type AS concern_type,
+                    COUNT(*) AS complaints,
+                    COALESCE(SUM(lost_amount), 0) AS lost_amount
+             FROM vw_complaints
+             WHERE $where
+             GROUP BY std_concern_type
+             ORDER BY complaints DESC"
         );
         $stmt->execute($params);
         return $stmt->fetchAll();
