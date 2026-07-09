@@ -29,9 +29,14 @@ final class Filters
      */
     public static function fromRequest(array $q): self
     {
-        return new self(
+        [$fromDate, $toDate] = self::orderDateRange(
             self::cleanDate($q['from_date'] ?? null),
             self::cleanDate($q['to_date'] ?? null),
+        );
+
+        return new self(
+            $fromDate,
+            $toDate,
             self::cleanText($q['customer'] ?? null),
             self::cleanText($q['item'] ?? null),
             self::cleanText($q['po'] ?? null),
@@ -123,6 +128,22 @@ final class Filters
         }
 
         return [implode(' AND ', $conds), $params];
+    }
+
+    /**
+     * Keep the date range in chronological order. If both ends are supplied
+     * and the user entered them backwards (from later than to), swap them so
+     * the "from <= column <= to" clause still selects the intended window
+     * instead of silently matching nothing.
+     *
+     * @return array{0:?string,1:?string}
+     */
+    private static function orderDateRange(?string $from, ?string $to): array
+    {
+        if ($from !== null && $to !== null && $from > $to) {
+            return [$to, $from];
+        }
+        return [$from, $to];
     }
 
     private static function cleanDate(mixed $v): ?string
