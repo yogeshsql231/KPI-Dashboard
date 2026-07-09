@@ -36,7 +36,8 @@ $repo = new KpiRepository($pdo);
 $f = Filters::fromRequest([]);
 foreach (['summary', 'targets', 'byDate', 'topCustomers', 'topSkus', 'complaintsPareto', 'warehouseOptions'] as $m) {
     try {
-        $args = in_array($m, ['byDate', 'topCustomers', 'topSkus', 'complaintsPareto'], true) ? [$f] : [];
+        $noArg = in_array($m, ['targets', 'warehouseOptions'], true);
+        $args = $noArg ? [] : [$f];
         if ($m === 'topCustomers' || $m === 'topSkus') { $args = [$f, 10]; }
         $repo->$m(...$args);
         echo "[ok]   $m()\n";
