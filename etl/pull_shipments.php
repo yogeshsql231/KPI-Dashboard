@@ -17,6 +17,10 @@ declare(strict_types=1);
  *   source_key, ship_date, po_number, customer, ship_via, item_number,
  *   qty_requested, qty_shipped, order_date, requested_date, actual_date
  *
+ * Optional output columns (upserted when the query provides them; used by the
+ * Customer Service dashboard filters):
+ *   so_docentry, so_status, pick_status, warehouse, carrier
+ *
  * Idempotent: rows are upserted on (source_system, source_key), so re-running
  * updates existing rows instead of duplicating them.
  */
@@ -63,27 +67,31 @@ try {
 
 $target = $dryRun ? null : Database::connection();
 
-$upsertSql = 'INSERT INTO order_shipments
-    (ship_date, po_number, customer, ship_via, item_number,
-     qty_requested, qty_shipped, order_date, requested_date, actual_date,
-     source_system, source_key)
-   VALUES
-    (:ship_date, :po_number, :customer, :ship_via, :item_number,
-     :qty_requested, :qty_shipped, :order_date, :requested_date, :actual_date,
-     :source_system, :source_key)
-   ON DUPLICATE KEY UPDATE
-     ship_date = VALUES(ship_date),
-     po_number = VALUES(po_number),
-     customer = VALUES(customer),
-     ship_via = VALUES(ship_via),
-     item_number = VALUES(item_number),
-     qty_requested = VALUES(qty_requested),
-     qty_shipped = VALUES(qty_shipped),
-     order_date = VALUES(order_date),
-     requested_date = VALUES(requested_date),
-     actual_date = VALUES(actual_date)';
+$optional = ['so_docentry', 'so_status', 'pick_status', 'warehouse', 'carrier'];
 
-$upsert = $target?->prepare($upsertSql);
+/** Build the upsert for the base columns plus whichever optional columns the
+ *  source query actually returned. */
+function buildUpsertSql(array $extraCols): string
+{
+    $cols = array_merge(
+        ['ship_date', 'po_number', 'customer', 'ship_via', 'item_number',
+         'qty_requested', 'qty_shipped', 'order_date', 'requested_date', 'actual_date'],
+        $extraCols,
+        ['source_system', 'source_key'],
+    );
+    $placeholders = array_map(static fn (string $c): string => ":$c", $cols);
+    $updates = array_map(
+        static fn (string $c): string => "$c = VALUES($c)",
+        array_diff($cols, ['source_system', 'source_key']),
+    );
+
+    return 'INSERT INTO order_shipments (' . implode(', ', $cols) . ')'
+        . ' VALUES (' . implode(', ', $placeholders) . ')'
+        . ' ON DUPLICATE KEY UPDATE ' . implode(', ', $updates);
+}
+
+$upsert = null;
+$extraCols = [];
 
 $read = 0;
 $written = 0;
@@ -109,6 +117,8 @@ try {
                     'Source query is missing required output columns: ' . implode(', ', $missing)
                 );
             }
+            $extraCols = array_values(array_intersect($optional, array_keys($row)));
+            $upsert = $target?->prepare(buildUpsertSql($extraCols));
             $checkedColumns = true;
         }
 
@@ -133,6 +143,10 @@ try {
             ':source_system'  => $source,
             ':source_key'     => $key,
         ];
+
+        foreach ($extraCols as $col) {
+            $params[":$col"] = nullify($row[$col] ?? null);
+        }
 
         if ($dryRun) {
             if ($read <= 5) {

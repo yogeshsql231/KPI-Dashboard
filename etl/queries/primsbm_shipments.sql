@@ -1,39 +1,40 @@
 -- ===========================================================================
 -- PRIMSBM (Microsoft SQL Server) -> order_shipments source query.
 --
--- FILL THIS IN: replace the placeholder table/columns below with your real
--- PRIMSBM shipment/delivery table (or view / stored-proc result). The ETL
--- (etl/pull_shipments.php) only cares about the OUTPUT column names, so alias
--- your columns to exactly these names:
+-- Reads the pre-built delivery scorecard cache (dbo.KPI_DeliveryDashboardCache,
+-- refreshed from SAP HANA) and aliases its columns to the output names that
+-- etl/pull_shipments.php expects, including the optional SAP order fields
+-- (so_docentry, so_status, pick_status, warehouse, carrier) the Customer
+-- Service dashboard filters on. READ-ONLY (SELECT).
 --
---   source_key      -- a stable unique id per line (e.g. delivery line PK).
---                      Required & must be unique; used for idempotent upserts.
---   ship_date       -- date the line shipped
---   po_number       -- customer PO number
---   customer        -- customer name (ship-to)
---   ship_via        -- carrier / ship method (nullable)
---   item_number     -- SKU / item code
---   qty_requested   -- cases ordered
---   qty_shipped     -- cases actually shipped
---   order_date      -- order entry date (nullable; needed for lead time)
---   requested_date  -- requested pick-up / delivery date (nullable)
---   actual_date     -- actual pick-up / delivery date (nullable)
+-- If a cache column name differs on your box, adjust the right-hand side of
+-- the "AS" mapping; the output aliases must stay as-is. To build from raw SAP
+-- tables instead, use the ORDR/RDR1/DLN1 join in prodhana_shipments.sql.
 --
--- Keep it read-only (SELECT). Add a WHERE clause to limit the date window.
+-- Window: full month-aligned 12 months (1st of the month, 12 months back,
+-- through today) — same window as primsbm_delivery.sql (SCRUM-45).
 -- ===========================================================================
 
 SELECT
-    CAST(d.DeliveryLineId AS VARCHAR(128)) AS source_key,
-    d.ShipDate                             AS ship_date,
-    d.PoNumber                             AS po_number,
-    c.CustomerName                         AS customer,
-    d.ShipVia                              AS ship_via,
-    d.ItemNumber                           AS item_number,
-    d.QtyOrdered                           AS qty_requested,
-    d.QtyShipped                           AS qty_shipped,
-    d.OrderDate                            AS order_date,
-    d.RequestedDate                        AS requested_date,
-    d.ActualDate                           AS actual_date
-FROM dbo.DeliveryDetail AS d
-LEFT JOIN dbo.Customer  AS c ON c.CustomerId = d.CustomerId
-WHERE d.ShipDate >= DATEADD(DAY, -30, CAST(GETDATE() AS DATE));
+    CAST(SalesOrder AS VARCHAR(50)) + '-' + CAST(ItemCode AS VARCHAR(50)) AS source_key,
+    ShipDate          AS ship_date,
+    PONumber          AS po_number,
+    CustomerName      AS customer,
+    Carrier           AS ship_via,
+    ItemCode          AS item_number,
+    OrderQty          AS qty_requested,
+    DeliveredQty      AS qty_shipped,
+    PostingDate       AS order_date,
+    RequiredDate      AS requested_date,
+    ShipDate          AS actual_date,
+
+    -- Optional SAP order fields (Customer Service dashboard filters).
+    -- so_docentry carries the user-visible SO number — the SO search box
+    -- matches against it.
+    CAST(SalesOrder AS VARCHAR(32)) AS so_docentry,
+    SO_Status         AS so_status,
+    PickStatus        AS pick_status,
+    Warehouse         AS warehouse,
+    Carrier           AS carrier
+FROM dbo.KPI_DeliveryDashboardCache
+WHERE PostingDate >= DATEADD(MONTH, -12, DATEADD(DAY, 1 - DAY(CAST(GETDATE() AS DATE)), CAST(GETDATE() AS DATE)));
