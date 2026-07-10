@@ -323,3 +323,27 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .login-field input:focus { outline: none; border-color: var(--brand); }
 .login-btn { margin-top: 6px; }
 .login-alert { margin: 0; }
+
+/* Expanded Warehouse view (migration 010): material flow, age bars, legend. */
+.flow { display: flex; align-items: stretch; gap: 0; margin: 6px 0 4px; flex-wrap: wrap; }
+.flow-step { flex: 1 1 0; min-width: 150px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; text-align: center; }
+.flow-step .fs-k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.flow-step .fs-v { font-size: 24px; font-weight: 700; margin-top: 4px; }
+.flow-step .fs-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.flow-step.whs { border-top: 3px solid var(--brand); }
+.flow-step.stg { border-top: 3px solid var(--neutral); }
+.flow-step.prd { border-top: 3px solid var(--good); }
+.flow-step.wst { border-top: 3px solid var(--bad); }
+.flow-arrow { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 22px; padding: 0 8px; }
+.age-bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; min-width: 120px; border: 1px solid var(--border); }
+.age-bar span { display: block; height: 100%; }
+.age-bar .a0 { background: #16a34a; }
+.age-bar .a30 { background: #84cc16; }
+.age-bar .a60 { background: #d97706; }
+.age-bar .a90 { background: #dc2626; }
+.legend { font-size: 12px; color: var(--muted); display: flex; gap: 14px; margin: 4px 0 12px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+.legend .a0 { background: #16a34a; }
+.legend .a30 { background: #84cc16; }
+.legend .a60 { background: #d97706; }
+.legend .a90 { background: #dc2626; }
