@@ -19,7 +19,7 @@ require_once __DIR__ . '/../src/DeliveryRepository.php';
 require_once __DIR__ . '/../src/DeliveryFilters.php';
 require_once __DIR__ . '/../src/WarehouseInventoryRepository.php';
 
-Auth::requireLogin();
+Auth::requireDepartment('delivery');
 $canSeeFinancials = Auth::isCLevel();
 
 /** HTML-escape helper. */
@@ -157,11 +157,9 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
     <div class="brand">KPI Dashboard</div>
     <div class="subtitle">Delivery / Order Management</div>
     <nav class="topnav">
-        <a href="overview.php">Overview</a>
-        <a href="dashboard.php" class="active">Delivery</a>
-        <a href="warehouse.php">Warehouse</a>
-        <a href="dashboard_cs.php">Customer Service</a>
-        <a href="audit.php">Audit</a>
+        <?php foreach (Auth::allowedPages() as $navInfo): ?>
+        <a href="<?= e($navInfo['page']) ?>"<?= $navInfo['page'] === 'dashboard.php' ? ' class="active"' : '' ?>><?= e($navInfo['label']) ?></a>
+        <?php endforeach; ?>
         <?php $authUser = Auth::user(); if ($authUser !== null): ?>
         <span class="user-chip">
             <span class="user-name"><?= e($authUser['name']) ?></span>
