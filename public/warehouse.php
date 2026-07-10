@@ -240,8 +240,9 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
     <div class="grid">
         <section class="panel">
             <h2>Fulfilment by Warehouse</h2>
+            <p class="panel-note">Pallets are case-to-pallet converted with the same precedence as the capacity table (SAP pallet count, else units/pallet, else the warehouse default).</p>
             <table>
-                <thead><tr><th>Warehouse</th><th class="num">Lines</th><th class="num">Ordered</th><th class="num">Delivered</th><th class="num">Fill Rate</th></tr></thead>
+                <thead><tr><th>Warehouse</th><th class="num">Lines</th><th class="num">Ordered</th><th class="num">Delivered</th><th class="num">Pallets</th><th class="num">Fill Rate</th></tr></thead>
                 <tbody>
                 <?php foreach ($byWarehouse as $r): ?>
                     <tr>
@@ -249,11 +250,12 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
                         <td class="num"><?= num($r['line_count']) ?></td>
                         <td class="num"><?= num($r['order_qty']) ?></td>
                         <td class="num"><?= num($r['delivered_qty']) ?></td>
+                        <td class="num"><?= pallets($r['delivered_pallets']) ?></td>
                         <td class="num"><?= pct($r['fill_rate']) ?></td>
                     </tr>
                 <?php endforeach; ?>
                 <?php if ($byWarehouse === []): ?>
-                    <tr><td colspan="5" class="empty">No data</td></tr>
+                    <tr><td colspan="6" class="empty">No data</td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>
@@ -406,7 +408,7 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
                 <span><i class="a0"></i>0&ndash;30d</span><span><i class="a30"></i>30&ndash;60d</span><span><i class="a60"></i>60&ndash;90d</span><span><i class="a90"></i>90d+ / expired</span>
             </div>
             <table>
-                <thead><tr><th>Warehouse</th><th class="num">Batches</th><th>Age Distribution</th><th class="num">Aged &gt; 90d</th><th class="num">Expired</th><th class="num">% Aged</th></tr></thead>
+                <thead><tr><th>Warehouse</th><th class="num">Batches</th><th class="num">Pallets</th><th>Age Distribution</th><th class="num">Aged &gt; 90d</th><th class="num">Expired</th><th class="num">% Aged</th></tr></thead>
                 <tbody>
                 <?php foreach ($agedByWarehouse as $r): ?>
                     <?php
@@ -418,6 +420,7 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
                     <tr>
                         <td><?= e($r['warehouse']) ?></td>
                         <td class="num"><?= num($tot) ?></td>
+                        <td class="num"><?= pallets($r['total_pallets']) ?></td>
                         <td>
                             <div class="age-bar">
                                 <span class="a0" style="width:<?= $w((int) $r['b0_30']) ?>%"></span>
@@ -432,7 +435,7 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
                     </tr>
                 <?php endforeach; ?>
                 <?php if ($agedByWarehouse === []): ?>
-                    <tr><td colspan="6" class="empty">No batches match the current filters.</td></tr>
+                    <tr><td colspan="7" class="empty">No batches match the current filters.</td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>
@@ -445,7 +448,7 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
         <p class="panel-note">Batches past the 90-day / expiry threshold, oldest first &mdash; the disposal / rotation worklist.</p>
         <div class="lpn-scroll">
         <table>
-            <thead><tr><th>Material</th><th>Batch</th><th>Warehouse</th><th class="num">Qty</th><th>Admission</th><th>Expiry</th><th class="num">Age (days)</th><th>Status</th></tr></thead>
+            <thead><tr><th>Material</th><th>Batch</th><th>Warehouse</th><th class="num">Qty</th><th class="num">Pallets</th><th>Admission</th><th>Expiry</th><th class="num">Age (days)</th><th>Status</th></tr></thead>
             <tbody>
             <?php foreach ($agedOutRows as $r): ?>
                 <tr<?= (int) $r['is_expired'] === 1 ? ' class="lpn-expired"' : '' ?>>
@@ -453,6 +456,7 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
                     <td><?= e($r['batch_number']) ?: '<span class="muted">—</span>' ?></td>
                     <td><?= e($r['warehouse']) ?></td>
                     <td class="num"><?= $r['quantity'] !== null ? num($r['quantity']) . ' ' . e($r['unit_of_measure']) : '—' ?></td>
+                    <td class="num"><?= $r['pallets'] !== null ? pallets($r['pallets']) : '—' ?></td>
                     <td><?= e($r['admission_date']) ?: '<span class="muted">—</span>' ?></td>
                     <td><?= e($r['expiry_date']) ?: '<span class="muted">—</span>' ?></td>
                     <td class="num"><?= $r['age_days'] !== null ? num($r['age_days']) : '—' ?></td>
@@ -460,7 +464,7 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
                 </tr>
             <?php endforeach; ?>
             <?php if ($agedOutRows === []): ?>
-                <tr><td colspan="8" class="empty">Nothing aged out &mdash; all batches within threshold.</td></tr>
+                <tr><td colspan="9" class="empty">Nothing aged out &mdash; all batches within threshold.</td></tr>
             <?php endif; ?>
             </tbody>
         </table>

@@ -63,7 +63,7 @@ final class WarehouseInventoryRepository
      *
      * @return array{0:string,1:array<int,mixed>}
      */
-    private function whItemClause(DeliveryFilters $f, string $whCol): array
+    private function whItemClause(DeliveryFilters $f, string $whCol, string $itemPrefix = ''): array
     {
         $conds = ['1 = 1'];
         $params = [];
@@ -72,12 +72,46 @@ final class WarehouseInventoryRepository
             $params[] = $f->warehouse;
         }
         if ($f->item !== null) {
-            $conds[] = '(item_code LIKE ? OR item_description LIKE ?)';
+            $conds[] = "({$itemPrefix}item_code LIKE ? OR {$itemPrefix}item_description LIKE ?)";
             $like = '%' . $f->item . '%';
             $params[] = $like;
             $params[] = $like;
         }
         return [implode(' AND ', $conds), $params];
+    }
+
+    // ---- Case-to-pallet conversion (SCRUM-63) -------------------------------
+
+    /**
+     * Shared case-to-pallet SQL expression. Precedence: the row's stored pallet
+     * count, else the item's packaging conversion (units/pallet, then
+     * units-per-case x cases-per-pallet from material_packaging, alias `mp`),
+     * else the warehouse default cases_per_pallet (warehouse_capacity, alias
+     * `wc`) — mirroring DeliveryRepository::warehouseCapacity.
+     */
+    private function palletExpr(string $qtyCol, string $storedCol): string
+    {
+        $wcFallback = $this->tableExists('warehouse_capacity')
+            ? ", $qtyCol / NULLIF(wc.cases_per_pallet, 0)"
+            : '';
+        return "COALESCE(
+                    $storedCol,
+                    $qtyCol / NULLIF(mp.units_per_pallet, 0),
+                    $qtyCol / NULLIF(mp.units_per_case * mp.cases_per_pallet, 0)$wcFallback)";
+    }
+
+    /** LEFT JOINs backing palletExpr(); mp keyed by item, wc by warehouse. */
+    private function palletJoins(string $itemCol, string $whCol): string
+    {
+        $joins = $this->tableExists('material_packaging')
+            ? "LEFT JOIN material_packaging mp ON mp.item_code = $itemCol"
+            : "LEFT JOIN (SELECT NULL AS item_code, NULL AS units_per_case,
+                                 NULL AS cases_per_pallet, NULL AS units_per_pallet) mp
+                    ON mp.item_code = $itemCol";
+        if ($this->tableExists('warehouse_capacity')) {
+            $joins .= " LEFT JOIN warehouse_capacity wc ON wc.warehouse = $whCol";
+        }
+        return $joins;
     }
 
     // ---- Summary cards -----------------------------------------------------
@@ -91,12 +125,14 @@ final class WarehouseInventoryRepository
         ];
 
         if ($this->hasStock()) {
-            [$where, $params] = $this->whItemClause($f, 'warehouse');
+            [$where, $params] = $this->whItemClause($f, 's.warehouse', 's.');
+            $palletExpr = $this->palletExpr('s.on_hand', 's.pallets');
+            $joins = $this->palletJoins('s.item_code', 's.warehouse');
             $stmt = $this->pdo->prepare(
-                "SELECT COUNT(DISTINCT warehouse) AS warehouses,
-                        COUNT(DISTINCT item_code) AS materials,
-                        COALESCE(SUM(pallets), 0) AS on_hand_pallets
-                 FROM warehouse_stock WHERE $where"
+                "SELECT COUNT(DISTINCT s.warehouse) AS warehouses,
+                        COUNT(DISTINCT s.item_code) AS materials,
+                        COALESCE(SUM($palletExpr), 0) AS on_hand_pallets
+                 FROM warehouse_stock s $joins WHERE $where"
             );
             $stmt->execute($params);
             $row = $stmt->fetch() ?: [];
@@ -135,13 +171,15 @@ final class WarehouseInventoryRepository
         if (!$this->hasStock()) {
             return [];
         }
-        [$where, $params] = $this->whItemClause($f, 'warehouse');
+        [$where, $params] = $this->whItemClause($f, 's.warehouse', 's.');
+        $palletExpr = $this->palletExpr('s.on_hand', 's.pallets');
+        $joins = $this->palletJoins('s.item_code', 's.warehouse');
         $stmt = $this->pdo->prepare(
-            "SELECT item_code, item_description, warehouse, on_hand, committed,
-                    on_order, unit_of_measure, pallets
-             FROM warehouse_stock
+            "SELECT s.item_code, s.item_description, s.warehouse, s.on_hand, s.committed,
+                    s.on_order, s.unit_of_measure, $palletExpr AS pallets
+             FROM warehouse_stock s $joins
              WHERE $where
-             ORDER BY on_hand DESC, item_code
+             ORDER BY s.on_hand DESC, s.item_code
              LIMIT " . (int) $limit
         );
         $stmt->execute($params);
@@ -189,20 +227,22 @@ final class WarehouseInventoryRepository
         if (!$this->hasBatches()) {
             return [];
         }
-        [$where, $params] = $this->whItemClause($f, 'std_warehouse');
+        [$where, $params] = $this->whItemClause($f, 'b.std_warehouse', 'b.');
+        $palletExpr = $this->palletExpr('b.quantity', 'b.pallets');
+        $joins = $this->palletJoins('b.item_code', 'b.std_warehouse');
         $stmt = $this->pdo->prepare(
-            "SELECT std_warehouse AS warehouse,
+            "SELECT b.std_warehouse AS warehouse,
                     COUNT(*)                                                       AS batches,
-                    COALESCE(SUM(pallets), 0)                                      AS total_pallets,
-                    SUM(CASE WHEN age_bucket = '0-30'  THEN 1 ELSE 0 END)          AS b0_30,
-                    SUM(CASE WHEN age_bucket = '30-60' THEN 1 ELSE 0 END)          AS b30_60,
-                    SUM(CASE WHEN age_bucket = '60-90' THEN 1 ELSE 0 END)          AS b60_90,
-                    SUM(CASE WHEN age_bucket = '90+'   THEN 1 ELSE 0 END)          AS b90,
-                    SUM(CASE WHEN age_bucket = 'unknown' THEN 1 ELSE 0 END)        AS b_unknown,
-                    COALESCE(SUM(is_expired), 0)                                   AS expired
-             FROM vw_inventory_batches
+                    COALESCE(SUM($palletExpr), 0)                                  AS total_pallets,
+                    SUM(CASE WHEN b.age_bucket = '0-30'  THEN 1 ELSE 0 END)        AS b0_30,
+                    SUM(CASE WHEN b.age_bucket = '30-60' THEN 1 ELSE 0 END)        AS b30_60,
+                    SUM(CASE WHEN b.age_bucket = '60-90' THEN 1 ELSE 0 END)        AS b60_90,
+                    SUM(CASE WHEN b.age_bucket = '90+'   THEN 1 ELSE 0 END)        AS b90,
+                    SUM(CASE WHEN b.age_bucket = 'unknown' THEN 1 ELSE 0 END)      AS b_unknown,
+                    COALESCE(SUM(b.is_expired), 0)                                 AS expired
+             FROM vw_inventory_batches b $joins
              WHERE $where
-             GROUP BY std_warehouse
+             GROUP BY b.std_warehouse
              ORDER BY b90 DESC, warehouse"
         );
         $stmt->execute($params);
@@ -220,13 +260,16 @@ final class WarehouseInventoryRepository
         if (!$this->hasBatches()) {
             return [];
         }
-        [$where, $params] = $this->whItemClause($f, 'std_warehouse');
+        [$where, $params] = $this->whItemClause($f, 'b.std_warehouse', 'b.');
+        $palletExpr = $this->palletExpr('b.quantity', 'b.pallets');
+        $joins = $this->palletJoins('b.item_code', 'b.std_warehouse');
         $stmt = $this->pdo->prepare(
-            "SELECT item_code, item_description, batch_number, std_warehouse AS warehouse,
-                    quantity, unit_of_measure, admission_date, expiry_date, age_days, is_expired
-             FROM vw_inventory_batches
-             WHERE $where AND (age_bucket = '90+' OR is_expired = 1)
-             ORDER BY is_expired DESC, age_days DESC, expiry_date
+            "SELECT b.item_code, b.item_description, b.batch_number, b.std_warehouse AS warehouse,
+                    b.quantity, b.unit_of_measure, b.admission_date, b.expiry_date,
+                    b.age_days, b.is_expired, $palletExpr AS pallets
+             FROM vw_inventory_batches b $joins
+             WHERE $where AND (b.age_bucket = '90+' OR b.is_expired = 1)
+             ORDER BY b.is_expired DESC, b.age_days DESC, b.expiry_date
              LIMIT " . (int) $limit
         );
         $stmt->execute($params);
