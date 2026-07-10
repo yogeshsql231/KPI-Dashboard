@@ -73,6 +73,7 @@ $complaintSummary = ['complaints' => 0, 'lost_amount' => 0];
 $complaintsByReason = [];
 $palletRows = [];
 $palletTrend = [];
+$divisionRows = [];
 $lpnSummary = null;
 $hasLpn = false;
 $whOptions = [];
@@ -93,6 +94,7 @@ try {
     $trend = $repo->weeklyTrend($filters, 8);
     $monthly = $repo->monthlyPerformance($filters);
     $topCust = $repo->customersByOrders($filters, 5);
+    $divisionRows = $repo->byDivisionCustomer($filters);
     $complaintSummary = $complaints->summary($filters);
     $complaintsByReason = $complaints->byReason($filters, 6);
 
@@ -275,6 +277,38 @@ $reasons = array_map(static fn ($r) => [
     'count'  => (int) $r['complaints'],
 ], $complaintsByReason);
 
+// ---- Customer / division mix (SCRUM-28) ------------------------------------
+// Roll customer rows up into divisions (SAP customer group); the pie shares
+// use $ when financials are visible, otherwise order counts.
+$divisions = [];
+foreach ($divisionRows as $r) {
+    $d = (string) $r['division'];
+    if (!isset($divisions[$d])) {
+        $divisions[$d] = ['orders' => 0, 'order_qty' => 0.0, 'delivered_qty' => 0.0, 'amount' => 0.0, 'customers' => []];
+    }
+    $divisions[$d]['orders']        += (int) $r['orders'];
+    $divisions[$d]['order_qty']     += (float) $r['order_qty'];
+    $divisions[$d]['delivered_qty'] += (float) $r['delivered_qty'];
+    $divisions[$d]['amount']        += (float) $r['order_amount'];
+    $divisions[$d]['customers'][]    = [
+        'name'          => (string) $r['customer_name'],
+        'orders'        => (int) $r['orders'],
+        'delivered_qty' => (float) $r['delivered_qty'],
+        'amount'        => (float) $r['order_amount'],
+    ];
+}
+uasort($divisions, static fn (array $a, array $b): int => $showMoney
+    ? ($b['amount'] <=> $a['amount'])
+    : ($b['orders'] <=> $a['orders']));
+$divisionTotal = 0.0;
+foreach ($divisions as $d) {
+    $divisionTotal += $showMoney ? $d['amount'] : $d['orders'];
+}
+$divisionPie = [];
+foreach ($divisions as $name => $d) {
+    $divisionPie[] = ['label' => $name, 'value' => $showMoney ? $d['amount'] : (float) $d['orders']];
+}
+
 $authUser  = Auth::user();
 $layoutKey = 'ovLayout:' . ($authUser !== null ? (string) $authUser['name'] : 'anon');
 
@@ -286,6 +320,7 @@ $chartData = [
     'perf'           => $perf,
     'reasons'        => $reasons,
     'sparkWeeks'     => $tWeeks,
+    'divisions'      => $divisionPie,
     'layoutKey'      => $layoutKey,
 ];
 ?>
@@ -457,6 +492,58 @@ $chartData = [
                     <?php endif; ?>
                 <?php else: ?>
                     <p class="ovempty">Restricted to C-level users.</p>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+
+    <div class="sec" data-id="divisions">
+        <div class="handle" draggable="true"><span class="grip">⠿</span><span>Customer &amp; Division Mix</span></div>
+        <div class="g2">
+            <div class="ovcard">
+                <div class="eyebrow">🥧 Division share<?= $showMoney ? ' (SO value)' : ' (orders)' ?></div>
+                <?php if ($divisionPie !== [] && $divisionTotal > 0): ?>
+                    <div class="donutwrap">
+                        <svg width="110" height="110" viewBox="0 0 110 110" id="divPie"></svg>
+                        <div class="dlegend" id="divLegend"></div>
+                    </div>
+                <?php else: ?>
+                    <p class="ovempty">No orders in the selected range.</p>
+                <?php endif; ?>
+            </div>
+            <div class="ovcard divtbl">
+                <div class="eyebrow">📋 Consolidated by division &amp; customer</div>
+                <?php if ($divisions === []): ?>
+                    <p class="ovempty">No orders in the selected range.</p>
+                <?php else: ?>
+                <div class="divscroll">
+                <table class="divtable">
+                    <thead><tr><th>Division / Customer</th><th class="r">Orders</th><th class="r">Delivered</th><th class="r"><?= $showMoney ? 'SO value' : 'Ordered' ?></th><th class="r">Share</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($divisions as $dName => $d):
+                        $dv = $showMoney ? $d['amount'] : (float) $d['orders'];
+                        $share = $divisionTotal > 0 ? round($dv / $divisionTotal * 100, 1) : 0.0;
+                    ?>
+                    <tr class="divrow">
+                        <td><?= e($dName) ?> <span class="dcount">(<?= count($d['customers']) ?> customers)</span></td>
+                        <td class="r"><?= num($d['orders']) ?></td>
+                        <td class="r"><?= num(round($d['delivered_qty'])) ?></td>
+                        <td class="r"><?= $showMoney ? e(moneyShort($d['amount'])) : num(round($d['order_qty'])) ?></td>
+                        <td class="r"><?= e($share) ?>%</td>
+                    </tr>
+                        <?php foreach ($d['customers'] as $c): ?>
+                        <tr class="custrow">
+                            <td class="cn"><?= e($c['name']) ?></td>
+                            <td class="r"><?= num($c['orders']) ?></td>
+                            <td class="r"><?= num(round($c['delivered_qty'])) ?></td>
+                            <td class="r"><?= $showMoney ? e(moneyShort($c['amount'])) : '' ?></td>
+                            <td class="r"></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+                </div>
                 <?php endif; ?>
             </div>
         </div>
@@ -704,6 +791,27 @@ $chartData = [
             '<div class="row"><span class="l"><b style="background:' + colors[i % colors.length] + '"></b>' + r.reason + '</span><span class="p">' + Math.round(r.count / total * 100) + '%</span></div>').join('');
     })();
 
+    // ---- Division share pie (SCRUM-28) -------------------------------------
+    (function () {
+        const svg = document.getElementById('divPie');
+        const legend = document.getElementById('divLegend');
+        if (!svg || !legend) return;
+        const ds = DATA.divisions || [];
+        const total = ds.reduce((a, r) => a + r.value, 0);
+        if (!total) return;
+        const C = 2 * Math.PI * 44;
+        let off = 0;
+        const colors = [GOLD, BLUE, GREEN, PURPLE, RED, DIM];
+        svg.innerHTML = '<g transform="translate(55,55)">' + ds.map((r, i) => {
+            const len = r.value / total * C;
+            const seg = '<circle r="44" fill="none" stroke="' + colors[i % colors.length] + '" stroke-width="20" stroke-dasharray="' + len + ' ' + (C - len) + '" stroke-dashoffset="' + (-off) + '" transform="rotate(-90)"><title>' + r.label + ': ' + (DATA.showMoney ? usdShort(r.value) : Number(r.value).toLocaleString() + ' orders') + '</title></circle>';
+            off += len;
+            return seg;
+        }).join('') + '</g>';
+        legend.innerHTML = ds.map((r, i) =>
+            '<div class="row"><span class="l"><b style="background:' + colors[i % colors.length] + '"></b>' + r.label + '</span><span class="p">' + Math.round(r.value / total * 100) + '%</span></div>').join('');
+    })();
+
     // ---- Filter hierarchy: date unlocks warehouse --------------------------
     function dateChanged() {
         const f = document.getElementById('filterForm');
@@ -753,7 +861,7 @@ $chartData = [
         setTimeout(() => { n.textContent = ''; }, 1200);
     }
     function resetLayout() {
-        ['orders', 'inventory', 'customers', 'financial', 'insights'].forEach((id) => {
+        ['orders', 'inventory', 'customers', 'divisions', 'financial', 'insights'].forEach((id) => {
             const el = cont.querySelector('[data-id="' + id + '"]');
             if (el) cont.appendChild(el);
         });
