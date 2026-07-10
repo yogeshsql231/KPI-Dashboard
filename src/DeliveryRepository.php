@@ -445,4 +445,31 @@ final class DeliveryRepository
         $stmt->execute($params);
         return $stmt->fetchAll();
     }
+
+    /**
+     * Per-division (SAP customer group) × customer rollup for the exec
+     * Overview: orders, quantities and $ per customer, grouped by division.
+     * Blank/NULL groups report as "Unassigned".
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function byDivisionCustomer(DeliveryFilters $f): array
+    {
+        [$where, $params] = $f->clause();
+        $stmt = $this->pdo->prepare(
+            "SELECT
+                COALESCE(NULLIF(TRIM(customer_group), ''), 'Unassigned') AS division,
+                customer_name,
+                COUNT(DISTINCT sales_order)      AS orders,
+                COALESCE(SUM(order_qty), 0)      AS order_qty,
+                COALESCE(SUM(delivered_qty), 0)  AS delivered_qty,
+                COALESCE(SUM(line_amount), 0)    AS order_amount
+             FROM vw_delivery_lines
+             WHERE $where
+             GROUP BY division, customer_name
+             ORDER BY division, order_amount DESC, orders DESC"
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
 }
