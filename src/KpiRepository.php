@@ -140,6 +140,44 @@ final class KpiRepository
         return $stmt->fetchAll();
     }
 
+    /**
+     * Order status tracking from the SAP delivery cache: per SO status, how
+     * many orders / POs / lines sit in it and how much is ordered, released
+     * and shipped. Returns [] when the delivery cache isn't loaded yet.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function orderStatusTracking(Filters $f): array
+    {
+        $exists = $this->pdo->query(
+            "SELECT COUNT(*) FROM information_schema.tables
+             WHERE table_schema = DATABASE() AND table_name = 'delivery_lines'"
+        )->fetchColumn();
+        if (!$exists) {
+            return [];
+        }
+
+        [$where, $params] = $f->deliveryClause();
+        $stmt = $this->pdo->prepare(
+            "SELECT
+                COALESCE(NULLIF(so_status, ''), 'Unknown') AS so_status,
+                COUNT(DISTINCT sales_order)  AS orders,
+                COUNT(DISTINCT po_number)    AS pos,
+                COUNT(*)                     AS line_count,
+                COALESCE(SUM(order_qty), 0)     AS order_qty,
+                COALESCE(SUM(released_qty), 0)  AS released_qty,
+                COALESCE(SUM(delivered_qty), 0) AS delivered_qty,
+                CASE WHEN SUM(order_qty) > 0
+                     THEN SUM(delivered_qty) / SUM(order_qty) END AS shipped_pct
+             FROM vw_delivery_lines
+             WHERE $where
+             GROUP BY COALESCE(NULLIF(so_status, ''), 'Unknown')
+             ORDER BY order_qty DESC"
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
     /** @return array<int, string> distinct customer names for the filter dropdown */
     public function customerOptions(): array
     {

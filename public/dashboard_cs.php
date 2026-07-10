@@ -50,6 +50,7 @@ $byDate = [];
 $topCustomers = [];
 $topSkus = [];
 $pareto = [];
+$orderStatus = [];
 $warehouseOptions = [];
 $filters = Filters::fromRequest($_GET);
 
@@ -61,6 +62,7 @@ try {
     $topCustomers = $repo->topCustomers($filters, 10);
     $topSkus = $repo->topSkus($filters, 10);
     $pareto = $repo->complaintsPareto($filters);
+    $orderStatus = $repo->orderStatusTracking($filters);
     $warehouseOptions = $repo->warehouseOptions();
 } catch (Throwable $ex) {
     $error = 'Unable to load KPI data. Check the database connection in your .env file.';
@@ -198,6 +200,33 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
     </section>
 
     <div class="grid">
+        <section class="panel">
+            <h2>Order Status Tracking</h2>
+            <p class="panel-note">Sales orders from the SAP delivery cache grouped by status — orders, customer POs and how much of each status is released and shipped. Source: <code>delivery_lines</code> via <code>etl/pull_delivery.php</code>.</p>
+            <table>
+                <thead>
+                    <tr><th>SO Status</th><th class="num">Orders</th><th class="num">POs</th><th class="num">Lines</th><th class="num">Ordered</th><th class="num">Released</th><th class="num">Shipped</th><th class="num">% Shipped</th></tr>
+                </thead>
+                <tbody>
+                <?php foreach ($orderStatus as $r): ?>
+                    <tr>
+                        <td><?= e($r['so_status']) ?></td>
+                        <td class="num"><?= num($r['orders']) ?></td>
+                        <td class="num"><?= num($r['pos']) ?></td>
+                        <td class="num"><?= num($r['line_count']) ?></td>
+                        <td class="num"><?= num($r['order_qty']) ?></td>
+                        <td class="num"><?= num($r['released_qty']) ?></td>
+                        <td class="num"><?= num($r['delivered_qty']) ?></td>
+                        <td class="num"><?= pct($r['shipped_pct']) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if ($orderStatus === []): ?>
+                    <tr><td colspan="8" class="empty">No data — load the SAP delivery cache with <code>etl/pull_delivery.php</code></td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </section>
+
         <section class="panel">
             <h2>OTIF &amp; Fill Rate by Date</h2>
             <table>
