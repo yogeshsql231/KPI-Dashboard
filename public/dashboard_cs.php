@@ -139,6 +139,10 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
             <input type="text" id="so" name="so" placeholder="contains…" value="<?= e($filters->salesOrder) ?>">
         </div>
         <div class="filter">
+            <label for="item">Item</label>
+            <input type="text" id="item" name="item" placeholder="contains…" value="<?= e($filters->item) ?>">
+        </div>
+        <div class="filter">
             <label for="po">PO number</label>
             <input type="text" id="po" name="po" placeholder="contains…" value="<?= e($filters->po) ?>">
         </div>
