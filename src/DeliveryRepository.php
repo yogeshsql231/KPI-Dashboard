@@ -74,23 +74,52 @@ final class DeliveryRepository
         return $stmt->fetchAll();
     }
 
-    /** @return array<int, array<string, mixed>> */
+    /**
+     * Per-warehouse fulfilment, with delivered pallets using the shared
+     * case-to-pallet conversion (see warehouseCapacity for the precedence).
+     *
+     * @return array<int, array<string, mixed>>
+     */
     public function byWarehouse(DeliveryFilters $f): array
     {
         [$where, $params] = $f->clause();
         $stmt = $this->pdo->prepare(
             "SELECT
-                COALESCE(warehouse, 'Unassigned') AS warehouse,
-                COUNT(*)                     AS line_count,
-                COALESCE(SUM(order_qty), 0)  AS order_qty,
-                COALESCE(SUM(delivered_qty), 0) AS delivered_qty,
-                CASE WHEN SUM(CASE WHEN ifr_eligible = 1 THEN order_qty ELSE 0 END) > 0
-                     THEN SUM(CASE WHEN ifr_eligible = 1 THEN delivered_qty ELSE 0 END)
-                        / SUM(CASE WHEN ifr_eligible = 1 THEN order_qty ELSE 0 END) END AS fill_rate
-             FROM vw_delivery_lines
-             WHERE $where
-             GROUP BY COALESCE(warehouse, 'Unassigned')
-             ORDER BY order_qty DESC"
+                t.warehouse,
+                t.line_count,
+                t.order_qty,
+                t.delivered_qty,
+                t.fill_rate,
+                t.pallets_known
+                    + CASE WHEN wc.cases_per_pallet IS NOT NULL AND wc.cases_per_pallet > 0
+                           THEN t.qty_unconverted / wc.cases_per_pallet ELSE 0 END AS delivered_pallets
+             FROM (
+                SELECT
+                    COALESCE(warehouse, 'Unassigned') AS warehouse,
+                    COUNT(*)                     AS line_count,
+                    COALESCE(SUM(order_qty), 0)  AS order_qty,
+                    COALESCE(SUM(delivered_qty), 0) AS delivered_qty,
+                    CASE WHEN SUM(CASE WHEN ifr_eligible = 1 THEN order_qty ELSE 0 END) > 0
+                         THEN SUM(CASE WHEN ifr_eligible = 1 THEN delivered_qty ELSE 0 END)
+                            / SUM(CASE WHEN ifr_eligible = 1 THEN order_qty ELSE 0 END) END AS fill_rate,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN qty_pallet IS NOT NULL AND qty_pallet > 0
+                                THEN qty_pallet
+                            WHEN qty_per_pallet IS NOT NULL AND qty_per_pallet > 0
+                                THEN delivered_qty / qty_per_pallet
+                            ELSE 0
+                        END), 0)                      AS pallets_known,
+                    COALESCE(SUM(
+                        CASE WHEN (qty_pallet IS NULL OR qty_pallet <= 0)
+                              AND (qty_per_pallet IS NULL OR qty_per_pallet <= 0)
+                             THEN delivered_qty ELSE 0 END), 0) AS qty_unconverted
+                FROM vw_delivery_lines
+                WHERE $where
+                GROUP BY COALESCE(warehouse, 'Unassigned')
+             ) t
+             LEFT JOIN warehouse_capacity wc ON wc.warehouse = t.warehouse
+             ORDER BY t.order_qty DESC"
         );
         $stmt->execute($params);
         return $stmt->fetchAll();
