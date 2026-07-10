@@ -350,7 +350,8 @@ final class DeliveryRepository
                 COUNT(DISTINCT po_number)                 AS pos,
                 COALESCE(SUM(order_qty), 0)               AS order_qty,
                 COALESCE(SUM(delivered_qty), 0)           AS delivered_qty,
-                COALESCE(SUM(line_amount), 0)             AS order_amount
+                COALESCE(SUM(line_amount), 0)             AS order_amount,
+                COALESCE(SUM(qty_pallet), 0)              AS pallets
              FROM vw_delivery_lines
              WHERE $where
                AND posting_date IS NOT NULL

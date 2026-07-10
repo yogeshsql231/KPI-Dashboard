@@ -8,7 +8,8 @@ declare(strict_types=1);
  * Executive view with the v2 interaction model:
  *   - Filter hierarchy: date range first, then warehouse (locked until a
  *     range is chosen).
- *   - KPI tiles: headline number by default, 8-week trend revealed on hover.
+ *   - KPI tiles: pallets are the primary executive metric (on-hand and
+ *     delivered), followed by SO/PO counts; 8-week trend revealed on hover.
  *   - Pallets by warehouse location: pictogram / bar toggle with per-status
  *     counts and a hover detail (total, aged >30d, 6-week trend).
  *   - Late delivery vs late payment: click a month to drill into the
@@ -72,6 +73,7 @@ $complaintSummary = ['complaints' => 0, 'lost_amount' => 0];
 $complaintsByReason = [];
 $palletRows = [];
 $palletTrend = [];
+$lpnSummary = null;
 $hasLpn = false;
 $whOptions = [];
 $lastRefreshed = null;
@@ -105,6 +107,7 @@ try {
         if ($hasLpn) {
             $palletRows = $lpn->byWarehouseStatus($filters);
             $palletTrend = $lpn->weeklyByWarehouse($filters, 6);
+            $lpnSummary = $lpn->summary($filters);
         }
     } catch (Throwable $ex) {
         $hasLpn = false; // LPN migration not applied yet — widget shows setup hint.
@@ -132,18 +135,20 @@ try {
 $hasAmount  = ($ov['order_amount'] ?? 0) > 0;
 $showMoney  = $hasAmount && $canSeeFinancials;
 
-$tOrders = [];
-$tPos    = [];
-$tAmount = [];
-$tPct    = [];
-$tWeeks  = [];
+$tOrders  = [];
+$tPos     = [];
+$tAmount  = [];
+$tPct     = [];
+$tWeeks   = [];
+$tPallets = [];
 foreach ($trend as $r) {
-    $tWeeks[]  = date('M j', strtotime((string) $r['week_start']));
-    $tOrders[] = (int) $r['orders'];
-    $tPos[]    = (int) $r['pos'];
-    $tAmount[] = (float) $r['order_amount'];
+    $tWeeks[]   = date('M j', strtotime((string) $r['week_start']));
+    $tOrders[]  = (int) $r['orders'];
+    $tPos[]     = (int) $r['pos'];
+    $tAmount[]  = (float) $r['order_amount'];
+    $tPallets[] = round((float) $r['pallets'], 1);
     $oq = (float) $r['order_qty'];
-    $tPct[]    = $oq > 0 ? round((float) $r['delivered_qty'] / $oq * 100, 1) : 0.0;
+    $tPct[]     = $oq > 0 ? round((float) $r['delivered_qty'] / $oq * 100, 1) : 0.0;
 }
 
 /** Last-vs-previous-week % change for a tile delta, or null. */
@@ -159,7 +164,33 @@ function deltaPct(array $series): ?float
 $orderQty     = (float) ($ov['order_qty'] ?? 0);
 $deliveredPct = $orderQty > 0 ? round((float) ($ov['delivered_qty'] ?? 0) / $orderQty * 100) : null;
 
+// Weekly received-pallet totals (all warehouses) for the on-hand tile spark.
+$tOnHand = [];
+foreach ($palletTrend as $r) {
+    $tOnHand[(string) $r['yw']] = ($tOnHand[(string) $r['yw']] ?? 0) + (int) $r['pallets'];
+}
+ksort($tOnHand);
+$tOnHand = array_values($tOnHand);
+
 $tiles = [
+    [
+        'label' => 'Pallets on hand',
+        'value' => $lpnSummary !== null ? num($lpnSummary['pallets'] ?? 0) : '—',
+        'sub'   => $lpnSummary !== null
+            ? 'across ' . num($lpnSummary['warehouses'] ?? 0) . ' warehouses · ' . num($lpnSummary['items'] ?? 0) . ' items'
+            : 'run the LPN ETL to populate',
+        'delta' => deltaPct($tOnHand),
+        'spark' => $tOnHand,
+        'color' => 'var(--ov-gold)',
+    ],
+    [
+        'label' => 'Pallets delivered',
+        'value' => num(round((float) ($ov['total_pallets'] ?? 0))),
+        'sub'   => $deliveredPct === null ? 'no ordered units in range' : $deliveredPct . '% of ordered units delivered',
+        'delta' => deltaPct($tPallets),
+        'spark' => $tPallets,
+        'color' => 'var(--ov-green)',
+    ],
     [
         'label' => $showMoney ? 'Total SO value' : 'Total SO',
         'value' => $showMoney ? moneyShort((float) $ov['order_amount']) : num($ov['total_so'] ?? 0),
@@ -175,14 +206,6 @@ $tiles = [
         'delta' => deltaPct($tPos),
         'spark' => $tPos,
         'color' => 'var(--ov-blue)',
-    ],
-    [
-        'label' => 'Delivery done vs pending',
-        'value' => $deliveredPct === null ? '—' : $deliveredPct . '%',
-        'sub'   => num($ov['delivered_qty'] ?? 0) . ' of ' . num($ov['order_qty'] ?? 0) . ' units',
-        'delta' => deltaPct($tPct),
-        'spark' => $tPct,
-        'color' => 'var(--ov-green)',
     ],
 ];
 
@@ -349,8 +372,8 @@ $chartData = [
     <div id="sections">
 
     <div class="sec" data-id="orders">
-        <div class="handle" draggable="true"><span class="grip">⠿</span><span>Orders</span></div>
-        <div class="g3">
+        <div class="handle" draggable="true"><span class="grip">⠿</span><span>Pallets &amp; Orders</span></div>
+        <div class="g4">
             <?php foreach ($tiles as $t): ?>
             <div class="ovcard tile">
                 <div class="top">
