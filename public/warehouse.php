@@ -318,9 +318,9 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
 
     <section class="panel panel-wide">
         <h2>Material Flow &mdash; Warehouse &rarr; Staging &rarr; Production &rarr; Waste</h2>
-        <p class="panel-note">Period totals in base UoM, reconstructed from SAP inventory documents (stock transfers, goods issue to production, and scrap issues). Source: <code>material_movements</code> (migration <code>010</code> + <code>etl/pull_movements.php</code>).</p>
+        <p class="panel-note">Period totals in base UoM, reconstructed from SAP inventory documents (stock transfers, goods issue to production, and scrap issues). Source: <code>material_movements</code> (migration <code>010</code> + <code>etl/pull_inventory.php --what=movements</code>).</p>
         <?php if (!$hasMovements): ?>
-            <p class="empty">No movement data loaded yet. Run migration <code>010_warehouse_inventory.sql</code>, map the columns with <code>etl/queries/movements_discover_sqlsrv.sql</code>, then load with <code>php etl/pull_movements.php --source=PRIMSBM</code>.</p>
+            <p class="empty">No movement data loaded yet. Run migration <code>010_warehouse_inventory.sql</code>, map the columns with <code>etl/queries/inventory_discover_sqlsrv.sql</code>, then load with <code>php etl/pull_inventory.php --what=movements --source=PRIMSBM</code>.</p>
         <?php else: ?>
             <div class="flow">
                 <div class="flow-step whs"><div class="fs-k">Warehouse (raw)</div><div class="fs-v"><?= num($movementFlow['receipt']) ?></div><div class="fs-sub">received</div></div>
@@ -337,9 +337,9 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
     <div class="grid">
         <section class="panel">
             <h2>Stock on Hand &mdash; Material &times; Warehouse</h2>
-            <p class="panel-note">On-hand quantity per item per warehouse. Source: <code>warehouse_stock</code> (OITW + OITM) via <code>etl/pull_stock.php</code>.</p>
+            <p class="panel-note">On-hand quantity per item per warehouse. Source: <code>warehouse_stock</code> (OITW + OITM) via <code>etl/pull_inventory.php --what=stock</code>.</p>
             <?php if (!$hasStock): ?>
-                <p class="empty">No stock loaded yet. Run migration <code>010</code>, then <code>php etl/pull_stock.php --source=PRIMSBM</code>.</p>
+                <p class="empty">No stock loaded yet. Run migration <code>010</code>, then <code>php etl/pull_inventory.php --what=stock --source=PRIMSBM</code>.</p>
             <?php else: ?>
             <div class="lpn-scroll">
             <table>
@@ -367,7 +367,7 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
             <h2>Packaging &mdash; Case / Bundle / Bag per Pallet</h2>
             <p class="panel-note">UoM conversion per material. Source: <code>material_packaging</code> (OITM UoM + Beas pallet master).</p>
             <?php if (!$hasPackaging): ?>
-                <p class="empty">No packaging data loaded yet. Run migration <code>010</code>, then <code>php etl/pull_packaging.php --source=PRIMSBM</code>.</p>
+                <p class="empty">No packaging data loaded yet. Run migration <code>010</code>, then <code>php etl/pull_inventory.php --what=packaging --source=PRIMSBM</code>.</p>
             <?php else: ?>
             <div class="lpn-scroll">
             <table>
@@ -394,9 +394,9 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
 
     <section class="panel panel-wide">
         <h2>Aged Material by Warehouse <span class="pill info">SCRUM-14</span></h2>
-        <p class="panel-note">Age buckets from batch admission/expiry. <strong>% Aged</strong> = batches over 90 days &divide; total. Source: <code>inventory_batches</code> (OBTN + OIBT) via <code>etl/pull_batches.php</code>.</p>
+        <p class="panel-note">Age buckets from batch admission/expiry. <strong>% Aged</strong> = batches over 90 days &divide; total. Source: <code>inventory_batches</code> (OBTN + OIBT) via <code>etl/pull_inventory.php --what=batches</code>.</p>
         <?php if (!$hasBatches): ?>
-            <p class="empty">No batch data loaded yet. Run migration <code>010</code>, map columns with <code>etl/queries/batches_discover_sqlsrv.sql</code>, then <code>php etl/pull_batches.php --source=PRIMSBM</code>.</p>
+            <p class="empty">No batch data loaded yet. Run migration <code>010</code>, map columns with <code>etl/queries/inventory_discover_sqlsrv.sql</code>, then <code>php etl/pull_inventory.php --what=batches --source=PRIMSBM</code>.</p>
         <?php else: ?>
             <div class="legend">
                 <span><i class="a0"></i>0&ndash;30d</span><span><i class="a30"></i>30&ndash;60d</span><span><i class="a60"></i>60&ndash;90d</span><span><i class="a90"></i>90d+ / expired</span>
