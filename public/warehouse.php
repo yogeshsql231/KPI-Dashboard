@@ -110,6 +110,10 @@ try {
     $agedByWarehouse = $inv->agedByWarehouse($filters);
     $agedOutRows = $inv->agedOutRows($filters);
     $movementFlow = $inv->movementFlow($filters);
+    // Filter buttons cover every known warehouse: delivery history plus the
+    // inventory caches (stock/batches), so RM/staging warehouses are selectable.
+    $opts['warehouse'] = array_values(array_unique(array_merge($opts['warehouse'], $inv->warehouseOptions())));
+    sort($opts['warehouse']);
 } catch (Throwable $ex) {
     $error = 'Unable to load warehouse data. Import sql/delivery_dashboard.sql + run migration 005_warehouse_capacity.sql and check your .env database connection.';
 }
