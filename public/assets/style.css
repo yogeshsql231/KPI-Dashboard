@@ -334,6 +334,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .flow-step.stg { border-top: 3px solid var(--neutral); }
 .flow-step.prd { border-top: 3px solid var(--good); }
 .flow-step.wst { border-top: 3px solid var(--bad); }
+.flow-step.fgd { border-top: 3px solid var(--warn); }
 .flow-arrow { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 22px; padding: 0 8px; }
 .age-bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; min-width: 120px; border: 1px solid var(--border); }
 .age-bar span { display: block; height: 100%; }

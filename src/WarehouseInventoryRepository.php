@@ -335,6 +335,46 @@ final class WarehouseInventoryRepository
         return $stages;
     }
 
+    /**
+     * Stock stage tracking (SCRUM-64): quantity sitting at each stage of the
+     * stock lifecycle — on-hand raw stock, moved to staging, issued to
+     * production, finished goods on hand, and returned/wasted. On-hand and
+     * finished goods read the warehouse_stock cache (finished goods = FG-*
+     * warehouses); the movement stages read material_movements over the
+     * selected date range. A stage is null when its cache table is missing.
+     *
+     * @return array<string,float|null>
+     */
+    public function stockStages(DeliveryFilters $f): array
+    {
+        $out = [
+            'on_hand' => null, 'to_staging' => null, 'to_production' => null,
+            'finished_goods' => null, 'waste' => null,
+        ];
+
+        if ($this->hasStock()) {
+            [$where, $params] = $this->whItemClause($f, 's.warehouse', 's.');
+            $stmt = $this->pdo->prepare(
+                "SELECT COALESCE(SUM(s.on_hand), 0) AS on_hand,
+                        COALESCE(SUM(CASE WHEN s.warehouse LIKE 'FG%' THEN s.on_hand ELSE 0 END), 0) AS finished_goods
+                 FROM warehouse_stock s WHERE $where"
+            );
+            $stmt->execute($params);
+            $row = $stmt->fetch() ?: [];
+            $out['on_hand'] = (float) ($row['on_hand'] ?? 0);
+            $out['finished_goods'] = (float) ($row['finished_goods'] ?? 0);
+        }
+
+        if ($this->hasMovements()) {
+            $flow = $this->movementFlow($f);
+            $out['to_staging'] = $flow['transfer'];
+            $out['to_production'] = $flow['issue'];
+            $out['waste'] = $flow['waste'];
+        }
+
+        return $out;
+    }
+
     /** Distinct warehouses seen across the stock/batch caches, for the buttons. */
     public function warehouseOptions(): array
     {
