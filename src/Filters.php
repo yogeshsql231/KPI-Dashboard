@@ -131,6 +131,49 @@ final class Filters
     }
 
     /**
+     * WHERE fragment + params for the SAP delivery cache (vw_delivery_lines),
+     * mapping the Customer Service filter set onto that table's columns.
+     *
+     * @return array{0:string,1:array<int,mixed>}
+     */
+    public function deliveryClause(): array
+    {
+        $conds = ['1 = 1'];
+        $params = [];
+
+        if ($this->fromDate !== null) {
+            $conds[] = 'posting_date >= ?';
+            $params[] = $this->fromDate;
+        }
+        if ($this->toDate !== null) {
+            $conds[] = 'posting_date <= ?';
+            $params[] = $this->toDate;
+        }
+        if ($this->customer !== null) {
+            $conds[] = 'customer_name = ?';
+            $params[] = $this->customer;
+        }
+        if ($this->item !== null) {
+            $conds[] = 'item_code = ?';
+            $params[] = $this->item;
+        }
+        if ($this->po !== null) {
+            $conds[] = 'po_number LIKE ?';
+            $params[] = '%' . $this->po . '%';
+        }
+        if ($this->warehouse !== null) {
+            $conds[] = 'warehouse = ?';
+            $params[] = $this->warehouse;
+        }
+        if ($this->salesOrder !== null) {
+            $conds[] = 'sales_order LIKE ?';
+            $params[] = '%' . $this->salesOrder . '%';
+        }
+
+        return [implode(' AND ', $conds), $params];
+    }
+
+    /**
      * Keep the date range in chronological order. If both ends are supplied
      * and the user entered them backwards (from later than to), swap them so
      * the "from <= column <= to" clause still selects the intended window
