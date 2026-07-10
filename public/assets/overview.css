@@ -58,7 +58,9 @@ body.ov-dark code{background:var(--ov-border);color:var(--ov-txt2);}
 .sec .handle:hover,.sec .handle:hover .grip{color:var(--ov-mut);}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
 .g3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
-@media(max-width:900px){.g2,.g3{grid-template-columns:1fr;}}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
+@media(max-width:1200px){.g4{grid-template-columns:1fr 1fr;}}
+@media(max-width:900px){.g2,.g3,.g4{grid-template-columns:1fr;}}
 .ovcard{background:var(--ov-card);border:1px solid var(--ov-border);border-radius:8px;padding:20px;}
 .eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.14em;color:var(--ov-dim);margin-bottom:12px;display:flex;align-items:center;gap:8px;}
 
