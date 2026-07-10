@@ -375,6 +375,94 @@ final class WarehouseInventoryRepository
         return $out;
     }
 
+    // ---- Estimated vs actual production usage (SCRUM-65) --------------------
+
+    public function hasProductionUsage(): bool
+    {
+        return $this->tableExists('production_usage')
+            && (int) $this->pdo->query('SELECT COUNT(*) FROM production_usage')->fetchColumn() > 0;
+    }
+
+    /**
+     * Shared WHERE fragment for production_usage: date range on doc_date plus
+     * the warehouse/item filters.
+     *
+     * @return array{0:string,1:array<int,mixed>}
+     */
+    private function usageClause(DeliveryFilters $f): array
+    {
+        [$where, $params] = $this->whItemClause($f, 'u.warehouse', 'u.');
+        if ($f->fromDate !== null) {
+            $where .= ' AND u.doc_date >= ?';
+            $params[] = $f->fromDate;
+        }
+        if ($f->toDate !== null) {
+            $where .= ' AND u.doc_date <= ?';
+            $params[] = $f->toDate;
+        }
+        return [$where, $params];
+    }
+
+    /**
+     * Overall planned vs actually-issued production consumption for the
+     * selected filters, with the variance ratio (actual/planned - 1).
+     *
+     * @return array{planned:float,actual:float,variance_pct:float|null,orders:int}|null
+     */
+    public function productionUsageSummary(DeliveryFilters $f): ?array
+    {
+        if (!$this->hasProductionUsage()) {
+            return null;
+        }
+        [$where, $params] = $this->usageClause($f);
+        $stmt = $this->pdo->prepare(
+            "SELECT COALESCE(SUM(u.planned_qty), 0) AS planned,
+                    COALESCE(SUM(u.actual_qty), 0)  AS actual,
+                    COUNT(DISTINCT u.production_order) AS orders
+             FROM production_usage u WHERE $where"
+        );
+        $stmt->execute($params);
+        $row = $stmt->fetch() ?: [];
+        $planned = (float) ($row['planned'] ?? 0);
+        $actual = (float) ($row['actual'] ?? 0);
+        return [
+            'planned' => $planned,
+            'actual' => $actual,
+            'variance_pct' => $planned > 0 ? ($actual / $planned) - 1 : null,
+            'orders' => (int) ($row['orders'] ?? 0),
+        ];
+    }
+
+    /**
+     * Per-item planned vs actual usage, largest absolute variance first, so
+     * over- and under-consumption stand out.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function productionUsageByItem(DeliveryFilters $f, int $limit = 15): array
+    {
+        if (!$this->hasProductionUsage()) {
+            return [];
+        }
+        [$where, $params] = $this->usageClause($f);
+        $stmt = $this->pdo->prepare(
+            "SELECT u.item_code, MAX(u.item_description) AS item_description,
+                    MAX(u.unit_of_measure)               AS unit_of_measure,
+                    COUNT(DISTINCT u.production_order)   AS orders,
+                    COALESCE(SUM(u.planned_qty), 0)      AS planned,
+                    COALESCE(SUM(u.actual_qty), 0)       AS actual,
+                    COALESCE(SUM(u.actual_qty), 0) - COALESCE(SUM(u.planned_qty), 0) AS variance
+             FROM production_usage u
+             WHERE $where
+             GROUP BY u.item_code
+             ORDER BY ABS(COALESCE(SUM(u.actual_qty), 0) - COALESCE(SUM(u.planned_qty), 0)) DESC,
+                      u.item_code
+             LIMIT " . (int) $limit
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
     /** Distinct warehouses seen across the stock/batch caches, for the buttons. */
     public function warehouseOptions(): array
     {
@@ -398,7 +486,7 @@ final class WarehouseInventoryRepository
     public function lastRefreshed(): ?string
     {
         $times = [];
-        foreach (['warehouse_stock', 'inventory_batches', 'material_packaging', 'material_movements'] as $t) {
+        foreach (['warehouse_stock', 'inventory_batches', 'material_packaging', 'material_movements', 'production_usage'] as $t) {
             if ($this->tableExists($t)) {
                 $v = $this->pdo->query("SELECT MAX(refreshed_at) FROM $t")->fetchColumn();
                 if ($v) {

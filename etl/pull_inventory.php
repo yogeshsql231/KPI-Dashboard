@@ -10,6 +10,7 @@ declare(strict_types=1);
  *   php etl/pull_inventory.php --what=packaging  --source=PRIMSBM
  *   php etl/pull_inventory.php --what=batches    --source=PRIMSBM
  *   php etl/pull_inventory.php --what=movements  --source=PRIMSBM
+ *   php etl/pull_inventory.php --what=production --source=PRIMSBM
  *
  * Common flags (same behaviour as pull_lpn.php): --dry-run, --print-sql,
  * --limit=N, --query=path.sql, --via=LINKEDSERVER (OPENQUERY passthrough).
@@ -66,12 +67,20 @@ $specs = [
         'num'  => ['quantity'],
         'required' => ['movement_type'],
     ],
+    'production' => [
+        'table' => 'production_usage',
+        'withSourceKey' => true,
+        'text' => ['production_order', 'item_code', 'item_description', 'warehouse', 'unit_of_measure'],
+        'date' => ['doc_date'],
+        'num'  => ['planned_qty', 'actual_qty'],
+        'required' => ['item_code'],
+    ],
 ];
 
 $opts = getopt('', ['what:', 'source:', 'query:', 'via:', 'dry-run', 'print-sql', 'limit::']);
 $what = strtolower((string) ($opts['what'] ?? ''));
 if (!isset($specs[$what])) {
-    fwrite(STDERR, "Usage: php etl/pull_inventory.php --what=stock|packaging|batches|movements [--source=PRIMSBM] [--dry-run]\n");
+    fwrite(STDERR, "Usage: php etl/pull_inventory.php --what=stock|packaging|batches|movements|production [--source=PRIMSBM] [--dry-run]\n");
     exit(1);
 }
 $spec   = $specs[$what];
