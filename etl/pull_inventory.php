@@ -41,6 +41,7 @@ $specs = [
         'text' => ['item_code', 'item_description', 'warehouse', 'unit_of_measure'],
         'date' => [],
         'num'  => ['on_hand', 'committed', 'on_order', 'pallets'],
+        'optionalText' => ['product_type', 'category'],   // migration 013
         'required' => ['item_code', 'warehouse'],
     ],
     'packaging' => [
@@ -129,6 +130,7 @@ if ($printSql) {
 $textCols = $spec['text'];
 $dateCols = $spec['date'];
 $numCols  = $spec['num'];
+$optionalText = $spec['optionalText'] ?? [];
 $allCols  = array_merge($textCols, $dateCols, $numCols);
 $expected = $spec['withSourceKey'] ? array_merge(['source_key'], $allCols) : $allCols;
 
@@ -143,22 +145,27 @@ try {
 
 $target = $dryRun ? null : Database::connection();
 
-$insertCols = array_merge($allCols, ['source_system']);
-if ($spec['withSourceKey']) {
-    $insertCols[] = 'source_key';
-}
-$colList = implode(', ', $insertCols);
-$placeholders = implode(', ', array_map(static fn(string $c): string => ':' . $c, $insertCols));
-$updateCols = array_merge($allCols, $spec['withSourceKey'] ? [] : ['source_system']);
-$updates = implode(",\n     ", array_map(static fn(string $c): string => "$c = VALUES($c)", $updateCols));
+/** Upsert covering the spec columns plus whichever optional columns the
+ *  source query actually returned (detected from the first row). */
+$buildUpsertSql = static function (array $extraCols) use ($spec, $allCols): string {
+    $insertCols = array_merge($allCols, $extraCols, ['source_system']);
+    if ($spec['withSourceKey']) {
+        $insertCols[] = 'source_key';
+    }
+    $colList = implode(', ', $insertCols);
+    $placeholders = implode(', ', array_map(static fn(string $c): string => ':' . $c, $insertCols));
+    $updateCols = array_merge($allCols, $extraCols, $spec['withSourceKey'] ? [] : ['source_system']);
+    $updates = implode(",\n     ", array_map(static fn(string $c): string => "$c = VALUES($c)", $updateCols));
 
-$upsertSql = "INSERT INTO {$spec['table']} ($colList)
+    return "INSERT INTO {$spec['table']} ($colList)
    VALUES ($placeholders)
    ON DUPLICATE KEY UPDATE
      $updates,
      refreshed_at = CURRENT_TIMESTAMP";
+};
 
-$upsert = $target?->prepare($upsertSql);
+$upsert = null;
+$extraCols = [];
 
 $read = 0;
 $written = 0;
@@ -185,11 +192,13 @@ try {
                     'Source query is missing required output columns: ' . implode(', ', $missing)
                 );
             }
+            $extraCols = array_values(array_intersect($optionalText, array_keys($row)));
+            $upsert = $target?->prepare($buildUpsertSql($extraCols));
             $checkedColumns = true;
         }
 
         $params = [':source_system' => $source];
-        foreach ($textCols as $c) {
+        foreach (array_merge($textCols, $extraCols) as $c) {
             $params[':' . $c] = nullify($row[$c] ?? null);
         }
         foreach ($dateCols as $c) {
