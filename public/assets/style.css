@@ -57,6 +57,9 @@ body {
     padding: 12px 14px;
     box-shadow: 0 1px 2px rgba(0,0,0,.04);
 }
+.stat.good .stat-value { color: var(--good); }
+.stat.warn .stat-value { color: var(--warn); }
+.stat.bad .stat-value  { color: var(--bad); }
 .stat-label { font-size: 12px; color: var(--muted); }
 .stat-value { font-size: 22px; font-weight: 700; margin: 2px 0; }
 .stat-note { font-size: 11px; color: var(--muted); }
