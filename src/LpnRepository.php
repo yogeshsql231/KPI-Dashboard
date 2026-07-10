@@ -100,6 +100,58 @@ final class LpnRepository
     }
 
     /**
+     * Pallet counts + quantity grouped by warehouse AND status, feeding the
+     * Overview's pallets-by-location widget (pictogram / bar views).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function byWarehouseStatus(DeliveryFilters $f): array
+    {
+        [$where, $params] = $this->clause($f);
+        $stmt = $this->pdo->prepare(
+            "SELECT std_warehouse AS warehouse,
+                    COALESCE(NULLIF(std_status, ''), 'Unknown') AS status,
+                    COUNT(*)                     AS pallets,
+                    COALESCE(SUM(quantity), 0)   AS total_qty,
+                    COALESCE(SUM(is_expired), 0) AS expired,
+                    SUM(CASE WHEN received_date IS NOT NULL
+                              AND received_date < DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                             THEN 1 ELSE 0 END)  AS aged_30d
+             FROM vw_lpn_pallets
+             WHERE $where
+             GROUP BY std_warehouse, COALESCE(NULLIF(std_status, ''), 'Unknown')
+             ORDER BY std_warehouse, status"
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Weekly received-pallet counts per warehouse over the last N weeks, for
+     * the Overview pallet widget's hover trend.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function weeklyByWarehouse(DeliveryFilters $f, int $weeks = 6): array
+    {
+        [$where, $params] = $this->clause($f);
+        $days = max(1, (int) $weeks) * 7;
+        $stmt = $this->pdo->prepare(
+            "SELECT std_warehouse AS warehouse,
+                    YEARWEEK(received_date, 3) AS yw,
+                    COUNT(*)                   AS pallets
+             FROM vw_lpn_pallets
+             WHERE $where
+               AND received_date IS NOT NULL
+               AND received_date >= DATE_SUB(CURDATE(), INTERVAL $days DAY)
+             GROUP BY std_warehouse, YEARWEEK(received_date, 3)
+             ORDER BY warehouse, yw"
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /**
      * The LPN detail rows themselves (most recent first), for the searchable
      * pallet table.
      *

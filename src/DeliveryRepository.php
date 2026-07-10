@@ -331,6 +331,64 @@ final class DeliveryRepository
     }
 
     /**
+     * Recent weekly trend feeding the Overview KPI tiles' hover charts:
+     * order count, order $, and delivered-vs-ordered % per ISO week. The
+     * date-range filter is intentionally dropped so the tiles always show a
+     * rolling window, while warehouse/item/etc. still apply.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function weeklyTrend(DeliveryFilters $f, int $weeks = 8): array
+    {
+        [$where, $params] = $f->clauseExcept('date');
+        $days = max(1, (int) $weeks) * 7;
+        $stmt = $this->pdo->prepare(
+            "SELECT
+                YEARWEEK(posting_date, 3)                 AS yw,
+                MIN(posting_date)                         AS week_start,
+                COUNT(DISTINCT sales_order)               AS orders,
+                COUNT(DISTINCT po_number)                 AS pos,
+                COALESCE(SUM(order_qty), 0)               AS order_qty,
+                COALESCE(SUM(delivered_qty), 0)           AS delivered_qty,
+                COALESCE(SUM(line_amount), 0)             AS order_amount
+             FROM vw_delivery_lines
+             WHERE $where
+               AND posting_date IS NOT NULL
+               AND posting_date >= DATE_SUB(CURDATE(), INTERVAL $days DAY)
+             GROUP BY YEARWEEK(posting_date, 3)
+             ORDER BY yw"
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Monthly order performance (orders, $, delivered qty) for the Overview's
+     * sales-performance and growth charts.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function monthlyPerformance(DeliveryFilters $f): array
+    {
+        [$where, $params] = $f->clause();
+        $stmt = $this->pdo->prepare(
+            "SELECT
+                DATE_FORMAT(posting_date, '%Y-%m')  AS ym,
+                COUNT(DISTINCT sales_order)         AS orders,
+                COALESCE(SUM(line_amount), 0)       AS order_amount,
+                COALESCE(SUM(delivered_amount), 0)  AS delivered_amount,
+                COALESCE(SUM(order_qty), 0)         AS order_qty,
+                COALESCE(SUM(delivered_qty), 0)     AS delivered_qty
+             FROM vw_delivery_lines
+             WHERE $where AND posting_date IS NOT NULL
+             GROUP BY DATE_FORMAT(posting_date, '%Y-%m')
+             ORDER BY ym"
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /**
      * Top customers by order count and dollar value. When $retailOnly is true,
      * only rows flagged is_retail = 1 are considered.
      *
