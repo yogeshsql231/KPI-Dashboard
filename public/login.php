@@ -31,7 +31,7 @@ Auth::boot();
 $return = safeReturn($_GET['return'] ?? $_POST['return'] ?? null);
 
 if (!Auth::enabled() || Auth::check()) {
-    header('Location: ' . $return);
+    header('Location: ' . (Auth::canOpenPage($return) ? $return : Auth::landingPage()));
     exit;
 }
 
@@ -40,7 +40,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = (string) ($_POST['username'] ?? '');
     $password = (string) ($_POST['password'] ?? '');
     if (Auth::attempt($username, $password)) {
-        header('Location: ' . $return);
+        // Land on the requested page if their departments allow it, otherwise
+        // on the first page they may open.
+        header('Location: ' . (Auth::canOpenPage($return) ? $return : Auth::landingPage()));
         exit;
     }
     $error = 'Sign-in failed. Check your username and password.';

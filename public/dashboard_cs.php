@@ -16,7 +16,7 @@ require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/KpiRepository.php';
 require_once __DIR__ . '/../src/Filters.php';
 
-Auth::requireLogin();
+Auth::requireDepartment('customer_service');
 $canSeeFinancials = Auth::isCLevel();
 
 /** HTML-escape helper. */
@@ -102,11 +102,9 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
     <div class="brand">KPI Dashboard</div>
     <div class="subtitle">Customer Service / Order Management</div>
     <nav class="topnav">
-        <a href="overview.php">Overview</a>
-        <a href="dashboard.php">Delivery</a>
-        <a href="warehouse.php">Warehouse</a>
-        <a href="dashboard_cs.php" class="active">Customer Service</a>
-        <a href="audit.php">Audit</a>
+        <?php foreach (Auth::allowedPages() as $navInfo): ?>
+        <a href="<?= e($navInfo['page']) ?>"<?= $navInfo['page'] === 'dashboard_cs.php' ? ' class="active"' : '' ?>><?= e($navInfo['label']) ?></a>
+        <?php endforeach; ?>
         <?php $authUser = Auth::user(); if ($authUser !== null): ?>
         <span class="user-chip">
             <span class="user-name"><?= e($authUser['name']) ?></span>

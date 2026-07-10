@@ -17,7 +17,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/AlertRepository.php';
 
-Auth::requireLogin();
+Auth::requireDepartment('audit');
 $canSeeFinancials = Auth::isCLevel();
 
 /** HTML-escape helper. */
@@ -84,11 +84,9 @@ try {
     <div class="brand">KPI Dashboard</div>
     <div class="subtitle">Audit &amp; Alerts</div>
     <nav class="topnav">
-        <a href="overview.php">Overview</a>
-        <a href="dashboard.php">Delivery</a>
-        <a href="warehouse.php">Warehouse</a>
-        <a href="dashboard_cs.php">Customer Service</a>
-        <a href="audit.php" class="active">Audit</a>
+        <?php foreach (Auth::allowedPages() as $navInfo): ?>
+        <a href="<?= e($navInfo['page']) ?>"<?= $navInfo['page'] === 'audit.php' ? ' class="active"' : '' ?>><?= e($navInfo['label']) ?></a>
+        <?php endforeach; ?>
         <?php $authUser = Auth::user(); if ($authUser !== null): ?>
         <span class="user-chip">
             <span class="user-name"><?= e($authUser['name']) ?></span>

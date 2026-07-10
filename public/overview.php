@@ -30,7 +30,7 @@ require_once __DIR__ . '/../src/PaymentRepository.php';
 require_once __DIR__ . '/../src/LpnRepository.php';
 require_once __DIR__ . '/../src/DeliveryFilters.php';
 
-Auth::requireLogin();
+Auth::requireDepartment('overview');
 $canSeeFinancials = Auth::isCLevel();
 
 function e(mixed $v): string
@@ -305,11 +305,9 @@ $chartData = [
     <div class="brand">KPI Dashboard</div>
     <div class="subtitle">Overview</div>
     <nav class="topnav">
-        <a href="overview.php" class="active">Overview</a>
-        <a href="dashboard.php">Delivery</a>
-        <a href="warehouse.php">Warehouse</a>
-        <a href="dashboard_cs.php">Customer Service</a>
-        <a href="audit.php">Audit</a>
+        <?php foreach (Auth::allowedPages() as $navInfo): ?>
+        <a href="<?= e($navInfo['page']) ?>"<?= $navInfo['page'] === 'overview.php' ? ' class="active"' : '' ?>><?= e($navInfo['label']) ?></a>
+        <?php endforeach; ?>
         <?php if ($authUser !== null): ?>
         <span class="user-chip">
             <span class="user-name"><?= e($authUser['name']) ?></span>
