@@ -16,6 +16,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/DeliveryRepository.php';
 require_once __DIR__ . '/../src/LpnRepository.php';
+require_once __DIR__ . '/../src/WarehouseInventoryRepository.php';
 require_once __DIR__ . '/../src/DeliveryFilters.php';
 
 Auth::requireLogin();
@@ -65,6 +66,18 @@ $lpnSummary = ['pallets' => 0, 'warehouses' => 0, 'items' => 0, 'total_qty' => 0
 $lpnByWarehouse = [];
 $lpnRows = [];
 $lpnStatusOpts = [];
+// Expanded inventory view (migration 010). Each panel degrades to a
+// "how to load" hint until its ETL has populated the cache.
+$invSummary = ['warehouses' => 0, 'materials' => 0, 'on_hand_pallets' => 0.0, 'aged_90' => 0, 'expired' => 0, 'waste_pct' => null];
+$hasStock = false;
+$hasBatches = false;
+$hasPackaging = false;
+$hasMovements = false;
+$stockRows = [];
+$packagingRows = [];
+$agedByWarehouse = [];
+$agedOutRows = [];
+$movementFlow = ['receipt' => 0.0, 'transfer' => 0.0, 'issue' => 0.0, 'waste' => 0.0];
 $filters = DeliveryFilters::fromRequest($_GET);
 
 try {
@@ -84,6 +97,19 @@ try {
         $lpnRows = $lpn->rows($filters, 200, $lpnStatus !== '' ? $lpnStatus : null);
         $lpnStatusOpts = $lpn->options('status');
     }
+
+    // Expanded warehouse inventory: stock, packaging, batch aging, movement.
+    $inv = new WarehouseInventoryRepository(Database::connection());
+    $hasStock = $inv->hasStock();
+    $hasBatches = $inv->hasBatches();
+    $hasPackaging = $inv->hasPackaging();
+    $hasMovements = $inv->hasMovements();
+    $invSummary = $inv->summary($filters);
+    $stockRows = $inv->stockRows($filters);
+    $packagingRows = $inv->packagingRows($filters);
+    $agedByWarehouse = $inv->agedByWarehouse($filters);
+    $agedOutRows = $inv->agedOutRows($filters);
+    $movementFlow = $inv->movementFlow($filters);
 } catch (Throwable $ex) {
     $error = 'Unable to load warehouse data. Import sql/delivery_dashboard.sql + run migration 005_warehouse_capacity.sql and check your .env database connection.';
 }
@@ -257,6 +283,186 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
             </table>
         </section>
     </div>
+
+    <?php
+        $invHasAny = $hasStock || $hasBatches || $hasPackaging || $hasMovements;
+        $waste = $movementFlow['issue'] + $movementFlow['waste'];
+    ?>
+    <section class="cards">
+        <div class="card brand">
+            <div class="card-label">Materials on hand</div>
+            <div class="card-value"><?= num($invSummary['materials']) ?></div>
+            <div class="card-target">SKUs with stock</div>
+        </div>
+        <div class="card neutral">
+            <div class="card-label">On-hand Pallets</div>
+            <div class="card-value"><?= pallets($invSummary['on_hand_pallets']) ?></div>
+            <div class="card-target">across warehouses</div>
+        </div>
+        <div class="card warn">
+            <div class="card-label">Aged &gt; 90 days</div>
+            <div class="card-value"><?= num($invSummary['aged_90']) ?></div>
+            <div class="card-target">batches at risk</div>
+        </div>
+        <div class="card bad">
+            <div class="card-label">Expired</div>
+            <div class="card-value"><?= num($invSummary['expired']) ?></div>
+            <div class="card-target">batches &mdash; dispose</div>
+        </div>
+        <div class="card neutral">
+            <div class="card-label">Waste (period)</div>
+            <div class="card-value"><?= $invSummary['waste_pct'] !== null ? pct($invSummary['waste_pct']) : '—' ?></div>
+            <div class="card-target">of issued qty</div>
+        </div>
+    </section>
+
+    <section class="panel panel-wide">
+        <h2>Material Flow &mdash; Warehouse &rarr; Staging &rarr; Production &rarr; Waste</h2>
+        <p class="panel-note">Period totals in base UoM, reconstructed from SAP inventory documents (stock transfers, goods issue to production, and scrap issues). Source: <code>material_movements</code> (migration <code>010</code> + <code>etl/pull_movements.php</code>).</p>
+        <?php if (!$hasMovements): ?>
+            <p class="empty">No movement data loaded yet. Run migration <code>010_warehouse_inventory.sql</code>, map the columns with <code>etl/queries/movements_discover_sqlsrv.sql</code>, then load with <code>php etl/pull_movements.php --source=PRIMSBM</code>.</p>
+        <?php else: ?>
+            <div class="flow">
+                <div class="flow-step whs"><div class="fs-k">Warehouse (raw)</div><div class="fs-v"><?= num($movementFlow['receipt']) ?></div><div class="fs-sub">received</div></div>
+                <div class="flow-arrow">&rarr;</div>
+                <div class="flow-step stg"><div class="fs-k">Staging</div><div class="fs-v"><?= num($movementFlow['transfer']) ?></div><div class="fs-sub">transferred</div></div>
+                <div class="flow-arrow">&rarr;</div>
+                <div class="flow-step prd"><div class="fs-k">Production</div><div class="fs-v"><?= num($movementFlow['issue']) ?></div><div class="fs-sub">consumed</div></div>
+                <div class="flow-arrow">&rarr;</div>
+                <div class="flow-step wst"><div class="fs-k">Waste / Scrap</div><div class="fs-v"><?= num($movementFlow['waste']) ?></div><div class="fs-sub"><?= $waste > 0 ? pct($movementFlow['waste'] / $waste) : '—' ?></div></div>
+            </div>
+        <?php endif; ?>
+    </section>
+
+    <div class="grid">
+        <section class="panel">
+            <h2>Stock on Hand &mdash; Material &times; Warehouse</h2>
+            <p class="panel-note">On-hand quantity per item per warehouse. Source: <code>warehouse_stock</code> (OITW + OITM) via <code>etl/pull_stock.php</code>.</p>
+            <?php if (!$hasStock): ?>
+                <p class="empty">No stock loaded yet. Run migration <code>010</code>, then <code>php etl/pull_stock.php --source=PRIMSBM</code>.</p>
+            <?php else: ?>
+            <div class="lpn-scroll">
+            <table>
+                <thead><tr><th>Material</th><th>Warehouse</th><th class="num">On Hand</th><th>UoM</th><th class="num">Pallets</th></tr></thead>
+                <tbody>
+                <?php foreach ($stockRows as $r): ?>
+                    <tr>
+                        <td><?= e($r['item_code']) ?><?php if ($r['item_description']): ?><span class="muted"> · <?= e($r['item_description']) ?></span><?php endif; ?></td>
+                        <td><?= e($r['warehouse']) ?></td>
+                        <td class="num"><?= num($r['on_hand']) ?></td>
+                        <td><?= e($r['unit_of_measure']) ?: '<span class="muted">—</span>' ?></td>
+                        <td class="num"><?= $r['pallets'] !== null ? pallets($r['pallets']) : '—' ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if ($stockRows === []): ?>
+                    <tr><td colspan="5" class="empty">No stock matches the current filters.</td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
+            </div>
+            <?php endif; ?>
+        </section>
+
+        <section class="panel">
+            <h2>Packaging &mdash; Case / Bundle / Bag per Pallet</h2>
+            <p class="panel-note">UoM conversion per material. Source: <code>material_packaging</code> (OITM UoM + Beas pallet master).</p>
+            <?php if (!$hasPackaging): ?>
+                <p class="empty">No packaging data loaded yet. Run migration <code>010</code>, then <code>php etl/pull_packaging.php --source=PRIMSBM</code>.</p>
+            <?php else: ?>
+            <div class="lpn-scroll">
+            <table>
+                <thead><tr><th>Material</th><th class="num">Per Case</th><th class="num">Cases / Pallet</th><th class="num">Units / Pallet</th><th>Base UoM</th></tr></thead>
+                <tbody>
+                <?php foreach ($packagingRows as $r): ?>
+                    <tr>
+                        <td><?= e($r['item_code']) ?><?php if ($r['item_description']): ?><span class="muted"> · <?= e($r['item_description']) ?></span><?php endif; ?></td>
+                        <td class="num"><?= $r['units_per_case'] !== null ? num($r['units_per_case']) : ($r['pack_description'] ? e($r['pack_description']) : '—') ?></td>
+                        <td class="num"><?= $r['cases_per_pallet'] !== null ? num($r['cases_per_pallet']) : '—' ?></td>
+                        <td class="num"><?= $r['units_per_pallet'] !== null ? num($r['units_per_pallet']) : '—' ?></td>
+                        <td><?= e($r['base_uom']) ?: '<span class="muted">—</span>' ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if ($packagingRows === []): ?>
+                    <tr><td colspan="5" class="empty">No packaging matches the current filters.</td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
+            </div>
+            <?php endif; ?>
+        </section>
+    </div>
+
+    <section class="panel panel-wide">
+        <h2>Aged Material by Warehouse <span class="pill info">SCRUM-14</span></h2>
+        <p class="panel-note">Age buckets from batch admission/expiry. <strong>% Aged</strong> = batches over 90 days &divide; total. Source: <code>inventory_batches</code> (OBTN + OIBT) via <code>etl/pull_batches.php</code>.</p>
+        <?php if (!$hasBatches): ?>
+            <p class="empty">No batch data loaded yet. Run migration <code>010</code>, map columns with <code>etl/queries/batches_discover_sqlsrv.sql</code>, then <code>php etl/pull_batches.php --source=PRIMSBM</code>.</p>
+        <?php else: ?>
+            <div class="legend">
+                <span><i class="a0"></i>0&ndash;30d</span><span><i class="a30"></i>30&ndash;60d</span><span><i class="a60"></i>60&ndash;90d</span><span><i class="a90"></i>90d+ / expired</span>
+            </div>
+            <table>
+                <thead><tr><th>Warehouse</th><th class="num">Batches</th><th>Age Distribution</th><th class="num">Aged &gt; 90d</th><th class="num">Expired</th><th class="num">% Aged</th></tr></thead>
+                <tbody>
+                <?php foreach ($agedByWarehouse as $r): ?>
+                    <?php
+                        $tot = (int) $r['batches'];
+                        $w = static fn(int $n): string => $tot > 0 ? number_format($n / $tot * 100, 1) : '0';
+                        $pctAged = $tot > 0 ? (int) $r['b90'] / $tot : 0.0;
+                        $pill = $pctAged >= 0.10 ? 'bad' : ($pctAged >= 0.05 ? 'warn' : 'good');
+                    ?>
+                    <tr>
+                        <td><?= e($r['warehouse']) ?></td>
+                        <td class="num"><?= num($tot) ?></td>
+                        <td>
+                            <div class="age-bar">
+                                <span class="a0" style="width:<?= $w((int) $r['b0_30']) ?>%"></span>
+                                <span class="a30" style="width:<?= $w((int) $r['b30_60']) ?>%"></span>
+                                <span class="a60" style="width:<?= $w((int) $r['b60_90']) ?>%"></span>
+                                <span class="a90" style="width:<?= $w((int) $r['b90']) ?>%"></span>
+                            </div>
+                        </td>
+                        <td class="num"><?= num($r['b90']) ?></td>
+                        <td class="num"><?= num($r['expired']) ?></td>
+                        <td class="num"><span class="pill <?= $pill ?>"><?= pct($pctAged, 1) ?></span></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if ($agedByWarehouse === []): ?>
+                    <tr><td colspan="6" class="empty">No batches match the current filters.</td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+    </section>
+
+    <?php if ($hasBatches): ?>
+    <section class="panel panel-wide">
+        <h2>Aged-Out Material List</h2>
+        <p class="panel-note">Batches past the 90-day / expiry threshold, oldest first &mdash; the disposal / rotation worklist.</p>
+        <div class="lpn-scroll">
+        <table>
+            <thead><tr><th>Material</th><th>Batch</th><th>Warehouse</th><th class="num">Qty</th><th>Admission</th><th>Expiry</th><th class="num">Age (days)</th><th>Status</th></tr></thead>
+            <tbody>
+            <?php foreach ($agedOutRows as $r): ?>
+                <tr<?= (int) $r['is_expired'] === 1 ? ' class="lpn-expired"' : '' ?>>
+                    <td><?= e($r['item_code']) ?><?php if ($r['item_description']): ?><span class="muted"> · <?= e($r['item_description']) ?></span><?php endif; ?></td>
+                    <td><?= e($r['batch_number']) ?: '<span class="muted">—</span>' ?></td>
+                    <td><?= e($r['warehouse']) ?></td>
+                    <td class="num"><?= $r['quantity'] !== null ? num($r['quantity']) . ' ' . e($r['unit_of_measure']) : '—' ?></td>
+                    <td><?= e($r['admission_date']) ?: '<span class="muted">—</span>' ?></td>
+                    <td><?= e($r['expiry_date']) ?: '<span class="muted">—</span>' ?></td>
+                    <td class="num"><?= $r['age_days'] !== null ? num($r['age_days']) : '—' ?></td>
+                    <td><?php if ((int) $r['is_expired'] === 1): ?><span class="pill bad">Expired</span><?php else: ?><span class="pill warn">Aged 90d+</span><?php endif; ?></td>
+                </tr>
+            <?php endforeach; ?>
+            <?php if ($agedOutRows === []): ?>
+                <tr><td colspan="8" class="empty">Nothing aged out &mdash; all batches within threshold.</td></tr>
+            <?php endif; ?>
+            </tbody>
+        </table>
+        </div>
+    </section>
+    <?php endif; ?>
 
     <section class="panel panel-wide">
         <h2>LPN &mdash; Pallet License Plates</h2>
