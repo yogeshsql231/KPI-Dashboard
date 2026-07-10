@@ -70,6 +70,10 @@ $lpnStatusOpts = [];
 // "how to load" hint until its ETL has populated the cache.
 $invSummary = ['warehouses' => 0, 'materials' => 0, 'on_hand_pallets' => 0.0, 'aged_90' => 0, 'expired' => 0, 'waste_pct' => null];
 $hasStock = false;
+$hasStockSplit = false;
+$stockSplitRows = [];
+$splitDim = isset($_GET['split']) && in_array($_GET['split'], ['location', 'type', 'category'], true)
+    ? (string) $_GET['split'] : 'location';
 $hasBatches = false;
 $hasPackaging = false;
 $hasMovements = false;
@@ -108,6 +112,10 @@ try {
     $hasMovements = $inv->hasMovements();
     $invSummary = $inv->summary($filters);
     $stockRows = $inv->stockRows($filters);
+    $hasStockSplit = $hasStock && $inv->hasStockClassification();
+    if ($hasStockSplit) {
+        $stockSplitRows = $inv->stockSplit($filters, $splitDim);
+    }
     $packagingRows = $inv->packagingRows($filters);
     $agedByWarehouse = $inv->agedByWarehouse($filters);
     $agedOutRows = $inv->agedOutRows($filters);
@@ -358,6 +366,49 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
                 <div class="flow-arrow">&rarr;</div>
                 <div class="flow-step wst"><div class="fs-k">Waste / Scrap</div><div class="fs-v"><?= num($movementFlow['waste']) ?></div><div class="fs-sub"><?= $waste > 0 ? pct($movementFlow['waste'] / $waste) : '—' ?></div></div>
             </div>
+        <?php endif; ?>
+    </section>
+
+    <section class="panel panel-wide">
+        <h2>Stock Split &mdash; Location / Product Type / Category</h2>
+        <p class="panel-note">On-hand stock rolled up by <?= e(['location' => 'warehouse location', 'type' => 'product type (Fresh / Frozen / Dry)', 'category' => 'SAP item group'][$splitDim]) ?>. Product type and category come from the SAP item group (migration <code>013</code> + a <code>--what=stock</code> reload); unclassified stock shows as &ldquo;Unassigned&rdquo;.</p>
+        <?php if (!$hasStockSplit): ?>
+            <p class="empty">Not available yet. Run migration <code>013_stock_classification.sql</code>, then reload stock with <code>php etl/pull_inventory.php --what=stock --source=PRIMSBM</code>.</p>
+        <?php else: ?>
+            <?php
+                $splitQs = static function (string $d): string {
+                    $q = $_GET;
+                    $q['split'] = $d;
+                    return 'warehouse.php?' . http_build_query($q);
+                };
+                $splitTotalOnHand = 0.0;
+                foreach ($stockSplitRows as $r) {
+                    $splitTotalOnHand += (float) $r['on_hand'];
+                }
+            ?>
+            <div class="wh-buttons" style="margin-bottom:10px">
+                <?php foreach (['location' => 'By Location', 'type' => 'By Product Type', 'category' => 'By Category'] as $d => $lbl): ?>
+                <a class="wh-btn<?= $splitDim === $d ? ' active' : '' ?>" href="<?= e($splitQs($d)) ?>"><?= e($lbl) ?></a>
+                <?php endforeach; ?>
+            </div>
+            <table>
+                <thead><tr><th><?= e(['location' => 'Warehouse', 'type' => 'Product Type', 'category' => 'Category'][$splitDim]) ?></th><th class="num">Warehouses</th><th class="num">Materials</th><th class="num">On Hand</th><th class="num">Pallets</th><th class="num">Share</th></tr></thead>
+                <tbody>
+                <?php foreach ($stockSplitRows as $r): ?>
+                    <tr>
+                        <td><?= e($r['grp']) ?></td>
+                        <td class="num"><?= num($r['warehouses']) ?></td>
+                        <td class="num"><?= num($r['materials']) ?></td>
+                        <td class="num"><?= num($r['on_hand']) ?></td>
+                        <td class="num"><?= pallets($r['pallets']) ?></td>
+                        <td class="num"><?= $splitTotalOnHand > 0 ? pct(((float) $r['on_hand']) / $splitTotalOnHand) : '—' ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if ($stockSplitRows === []): ?>
+                    <tr><td colspan="6" class="empty">No stock matches the current filters.</td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
         <?php endif; ?>
     </section>
 

@@ -186,6 +186,50 @@ final class WarehouseInventoryRepository
         return $stmt->fetchAll();
     }
 
+    // ---- Stock split (SCRUM-26) ---------------------------------------------
+
+    /** Whether migration 013 (product_type/category on warehouse_stock) ran. */
+    public function hasStockClassification(): bool
+    {
+        return $this->tableExists('vw_warehouse_stock');
+    }
+
+    /**
+     * Stock rolled up by one dimension: location (warehouse), product type
+     * (Fresh / Frozen / Dry) or category (SAP item group). Missing
+     * classifications group under "Unassigned".
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function stockSplit(DeliveryFilters $f, string $dim): array
+    {
+        if (!$this->hasStock() || !$this->hasStockClassification()) {
+            return [];
+        }
+        $dims = [
+            'location' => 's.warehouse',
+            'type'     => 's.std_product_type',
+            'category' => 's.std_category',
+        ];
+        $col = $dims[$dim] ?? $dims['location'];
+        [$where, $params] = $this->whItemClause($f, 's.warehouse', 's.');
+        $palletExpr = $this->palletExpr('s.on_hand', 's.pallets');
+        $joins = $this->palletJoins('s.item_code', 's.warehouse');
+        $stmt = $this->pdo->prepare(
+            "SELECT $col AS grp,
+                    COUNT(DISTINCT s.warehouse)   AS warehouses,
+                    COUNT(DISTINCT s.item_code)   AS materials,
+                    COALESCE(SUM(s.on_hand), 0)   AS on_hand,
+                    COALESCE(SUM($palletExpr), 0) AS pallets
+             FROM vw_warehouse_stock s $joins
+             WHERE $where
+             GROUP BY $col
+             ORDER BY on_hand DESC, grp"
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
     // ---- Packaging ---------------------------------------------------------
 
     /** @return array<int,array<string,mixed>> */

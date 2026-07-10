@@ -23,9 +23,19 @@ SELECT
         WHEN I."SalPackUn" IS NOT NULL AND I."SalPackUn" > 0
         THEN W."OnHand" / I."SalPackUn"
         ELSE NULL
-    END                                                 AS pallets
+    END                                                 AS pallets,
+    -- Product type (Fresh / Frozen / Dry) from the SAP item-group name;
+    -- unmatched groups stay NULL and show as "Unassigned" in the split view.
+    CASE
+        WHEN UPPER(G."ItmsGrpNam") LIKE '%FROZEN%' THEN 'Frozen'
+        WHEN UPPER(G."ItmsGrpNam") LIKE '%FRESH%'  THEN 'Fresh'
+        WHEN UPPER(G."ItmsGrpNam") LIKE '%DRY%'    THEN 'Dry'
+        ELSE NULL
+    END                                                 AS product_type,
+    G."ItmsGrpNam"                                      AS category
 FROM OITW W
     INNER JOIN OITM I ON I."ItemCode" = W."ItemCode"
+    LEFT JOIN OITB G ON G."ItmsGrpCod" = I."ItmsGrpCod"
     LEFT JOIN OWHS WH ON WH."WhsCode" = W."WhsCode"
 WHERE W."OnHand" <> 0
 ORDER BY W."WhsCode", W."ItemCode";
