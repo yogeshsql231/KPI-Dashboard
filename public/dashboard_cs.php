@@ -51,6 +51,7 @@ $topCustomers = [];
 $topSkus = [];
 $pareto = [];
 $orderStatus = [];
+$demographics = [];
 $warehouseOptions = [];
 $filters = Filters::fromRequest($_GET);
 
@@ -63,6 +64,7 @@ try {
     $topSkus = $repo->topSkus($filters, 10);
     $pareto = $repo->complaintsPareto($filters);
     $orderStatus = $repo->orderStatusTracking($filters);
+    $demographics = $repo->customerDemographics($filters);
     $warehouseOptions = $repo->warehouseOptions();
 } catch (Throwable $ex) {
     $error = 'Unable to load KPI data. Check the database connection in your .env file.';
@@ -222,6 +224,32 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
                 <?php endforeach; ?>
                 <?php if ($orderStatus === []): ?>
                     <tr><td colspan="8" class="empty">No data — load the SAP delivery cache with <code>etl/pull_delivery.php</code></td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </section>
+
+        <section class="panel">
+            <h2>Customer Demographics</h2>
+            <p class="panel-note">Retail vs the other SAP customer groups (OCRG) — how many customers, orders and shipped cases each type accounts for. Source: <code>delivery_lines</code> via <code>etl/pull_delivery.php</code>.</p>
+            <table>
+                <thead>
+                    <tr><th>Customer Type</th><th class="num">Customers</th><th class="num">Orders</th><th class="num">POs</th><th class="num">Cases Shipped</th><th class="num">% of Customers</th></tr>
+                </thead>
+                <tbody>
+                <?php $demoTotal = array_sum(array_map(static fn ($r) => (int) $r['customers'], $demographics)); ?>
+                <?php foreach ($demographics as $r): ?>
+                    <tr>
+                        <td><?= e($r['customer_type']) ?></td>
+                        <td class="num"><?= num($r['customers']) ?></td>
+                        <td class="num"><?= num($r['orders']) ?></td>
+                        <td class="num"><?= num($r['pos']) ?></td>
+                        <td class="num"><?= num($r['delivered_qty']) ?></td>
+                        <td class="num"><?= pct($demoTotal > 0 ? $r['customers'] / $demoTotal : null) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if ($demographics === []): ?>
+                    <tr><td colspan="6" class="empty">No data — load the SAP delivery cache with <code>etl/pull_delivery.php</code></td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>

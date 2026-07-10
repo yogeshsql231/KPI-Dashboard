@@ -178,6 +178,43 @@ final class KpiRepository
         return $stmt->fetchAll();
     }
 
+    /**
+     * Customer demographics from the SAP delivery cache: Retail vs the other
+     * SAP customer groups — distinct customers, orders and shipped cases per
+     * type. Returns [] when the delivery cache isn't loaded yet.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function customerDemographics(Filters $f): array
+    {
+        $exists = $this->pdo->query(
+            "SELECT COUNT(*) FROM information_schema.tables
+             WHERE table_schema = DATABASE() AND table_name = 'delivery_lines'"
+        )->fetchColumn();
+        if (!$exists) {
+            return [];
+        }
+
+        [$where, $params] = $f->deliveryClause();
+        $stmt = $this->pdo->prepare(
+            "SELECT
+                CASE WHEN is_retail = 1 THEN 'Retail'
+                     ELSE COALESCE(NULLIF(customer_group, ''), 'Unassigned') END AS customer_type,
+                MAX(is_retail)                  AS is_retail,
+                COUNT(DISTINCT customer_code)   AS customers,
+                COUNT(DISTINCT sales_order)     AS orders,
+                COUNT(DISTINCT po_number)       AS pos,
+                COALESCE(SUM(delivered_qty), 0) AS delivered_qty
+             FROM vw_delivery_lines
+             WHERE $where
+             GROUP BY CASE WHEN is_retail = 1 THEN 'Retail'
+                           ELSE COALESCE(NULLIF(customer_group, ''), 'Unassigned') END
+             ORDER BY customers DESC, customer_type"
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
     /** @return array<int, string> distinct customer names for the filter dropdown */
     public function customerOptions(): array
     {
