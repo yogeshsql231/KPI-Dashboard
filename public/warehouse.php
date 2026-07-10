@@ -58,7 +58,7 @@ function pallets(mixed $v): string
 $error = null;
 $byWarehouse = [];
 $warehouseCapacity = [];
-$opts = ['warehouse' => []];
+$opts = ['warehouse' => [], 'carrier' => [], 'so_status' => []];
 $lastRefreshed = null;
 $lpnStatus = isset($_GET['lpn_status']) && is_string($_GET['lpn_status']) ? trim($_GET['lpn_status']) : '';
 $hasLpn = false;
@@ -85,6 +85,8 @@ try {
     $byWarehouse = $repo->byWarehouse($filters);
     $warehouseCapacity = $repo->warehouseCapacity($filters);
     $opts['warehouse'] = $repo->options('warehouse');
+    $opts['carrier'] = $repo->options('carrier', $filters);
+    $opts['so_status'] = $repo->options('so_status', $filters);
     $lastRefreshed = $repo->lastRefreshed();
 
     // LPN (License Plate Number) pallet detail for the warehouse team. Only
@@ -158,6 +160,19 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
     }
     echo '</div></div>';
 }
+
+/** @param array<int, string> $options */
+function selectFilter(string $name, string $label, array $options, ?string $current, string $allLabel): void
+{
+    echo '<div class="filter"><label for="' . e($name) . '">' . e($label) . '</label>';
+    echo '<select id="' . e($name) . '" name="' . e($name) . '">';
+    echo '<option value="">' . e($allLabel) . '</option>';
+    foreach ($options as $opt) {
+        $sel = $current === $opt ? ' selected' : '';
+        echo '<option value="' . e($opt) . '"' . $sel . '>' . e($opt) . '</option>';
+    }
+    echo '</select></div>';
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -200,9 +215,17 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
         </div>
         <?php warehouseButtons('warehouse', 'Warehouse', $opts['warehouse'], $filters->warehouse); ?>
         <div class="filter">
+            <label for="so">SO Number</label>
+            <input type="text" id="so" name="so" placeholder="contains…" value="<?= e($filters->salesOrder) ?>">
+        </div>
+        <div class="filter">
             <label for="item">Item / LPN / Batch</label>
             <input type="text" id="item" name="item" placeholder="code, desc, LPN, batch…" value="<?= e($filters->item) ?>">
         </div>
+        <?php
+        selectFilter('carrier', 'Carrier', $opts['carrier'], $filters->carrier, 'All Carriers');
+        selectFilter('so_status', 'SO Status', $opts['so_status'], $filters->soStatus, 'All');
+        ?>
         <div class="filter-actions">
             <button type="submit" class="btn btn-primary">Apply</button>
             <a class="btn btn-reset" href="warehouse.php">Reset</a>

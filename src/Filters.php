@@ -81,8 +81,8 @@ final class Filters
             $params[] = $this->customer;
         }
         if ($this->item !== null) {
-            $conds[] = 'item_number = ?';
-            $params[] = $this->item;
+            $conds[] = 'item_number LIKE ?';
+            $params[] = '%' . $this->item . '%';
         }
         if ($this->po !== null) {
             $conds[] = 'po_number LIKE ?';
@@ -123,8 +123,10 @@ final class Filters
             $params[] = $this->customer;
         }
         if ($this->item !== null) {
-            $conds[] = 'item_number = ?';
-            $params[] = $this->item;
+            // Match on item number OR description so users can search either.
+            $conds[] = '(item_number LIKE ? OR item_description LIKE ?)';
+            $params[] = '%' . $this->item . '%';
+            $params[] = '%' . $this->item . '%';
         }
 
         return [implode(' AND ', $conds), $params];
