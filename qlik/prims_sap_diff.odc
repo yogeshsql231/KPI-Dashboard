@@ -1,0 +1,53 @@
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns="http://www.w3.org/TR/REC-html40">
+
+<head>
+<meta http-equiv=Content-Type content="text/x-ms-odc; charset=utf-8">
+<meta name=ProgId content=ODC.Table>
+<meta name=SourceType content=OLEDB>
+<meta name=Catalog content=PRIMSBM>
+<meta name=Table content="dbo.sp_qlik_prims_sap_diff">
+<title>PRIMS vs SAP-PRODHANA Diff (Qlik live feed)</title>
+<xml id=docprops><o:DocumentProperties
+  xmlns:o="urn:schemas-microsoft-com:office:office"
+  xmlns="http://www.w3.org/TR/REC-html40">
+  <o:Name>PRIMS vs SAP-PRODHANA Diff (Qlik live feed)</o:Name>
+  <o:Description>SCRUM-31: live link to dbo.sp_qlik_prims_sap_diff on the PRIMSBM SQL Server. Feeds the Excel sheet that the Qlik app reads.</o:Description>
+ </o:DocumentProperties>
+</xml>
+<xml id=msodc><odc:OfficeDataConnection
+  xmlns:odc="urn:schemas-microsoft-com:office:odc"
+  xmlns="http://www.w3.org/TR/REC-html40">
+  <odc:Connection odc:Type="OLEDB">
+   <odc:ConnectionString>Provider=SQLOLEDB.1;Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=PRIMSBM;Data Source=192.168.100.5;Use Procedure for Prepare=1;Auto Translate=True;Packet Size=4096</odc:ConnectionString>
+   <odc:CommandType>SQL</odc:CommandType>
+   <odc:CommandText>EXEC dbo.sp_qlik_prims_sap_diff @OnlyDifferences = 1</odc:CommandText>
+  </odc:Connection>
+ </odc:OfficeDataConnection>
+</xml>
+</head>
+
+<body>
+<!--
+  ADJUST BEFORE USE:
+    * Data Source        -> the PRIMSBM SQL Server hostname/IP (default 192.168.100.5).
+    * Integrated Security -> uses the Windows account running Excel. To use a
+      dedicated read-only SQL login instead, replace "Integrated Security=SSPI"
+      with "User ID=<login>;Password=<pwd>" (prefer a SELECT/EXECUTE-only login,
+      never sa).
+
+  IMPORTING INTO EXCEL (establishes the LIVE link — not a static export):
+    Data > Get Data > From File > From ODC / or double-click this .odc, then
+    "Enable" the connection. The sheet is now bound to the stored procedure.
+
+  REFRESH CADENCE (SCRUM-31 = every 30 min + manual): after importing, set
+    Data > Queries & Connections > (this connection) > Properties:
+      [x] Refresh every  30  minutes
+      [x] Refresh data when opening the file
+    Manual refresh at any time: Data > Refresh All (Ctrl+Alt+F5).
+  Note: Excel's timed refresh only runs while the workbook is OPEN. For an
+  unattended 30-minute refresh on a server, use qlik/refresh_qlik_diff.ps1
+  driven by the Windows Task Scheduler task in qlik/Refresh-QlikDiff-Every30Min.xml.
+-->
+</body>
+</html>

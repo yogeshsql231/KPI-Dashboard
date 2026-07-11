@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SCRUM-31 - Windows Task Scheduler definition: refresh the Qlik live-diff
+  workbook every 30 minutes (the automatic cadence). Import on the XAMPP/Office
+  box on the company LAN:
+
+    schtasks /Create /TN "KPI\Refresh-QlikDiff-Every30Min" ^
+      /XML qlik\Refresh-QlikDiff-Every30Min.xml
+
+  BEFORE IMPORTING, edit below:
+    * <Command>/<Arguments> paths so -File points at refresh_qlik_diff.ps1 and
+      -WorkbookPath points at the linked workbook on this box.
+    * <UserId> / logon settings for the account that owns the SQL/Excel access.
+
+  Manual refresh is separate - use qlik\manual_refresh.cmd or Excel's
+  Data > Refresh All. Per SCRUM-31 there is no automated fallback: a failed run
+  is surfaced in Task Scheduler history and corrected manually via paperwork.
+-->
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>KPI Dashboard SCRUM-31: refresh the PRIMS vs SAP/PRODHANA diff workbook (Qlik live feed) every 30 minutes.</Description>
+    <URI>\KPI\Refresh-QlikDiff-Every30Min</URI>
+  </RegistrationInfo>
+  <Triggers>
+    <CalendarTrigger>
+      <StartBoundary>2026-07-11T06:00:00</StartBoundary>
+      <Repetition>
+        <Interval>PT30M</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+      <ScheduleByDay>
+        <DaysInterval>1</DaysInterval>
+      </ScheduleByDay>
+      <Enabled>true</Enabled>
+    </CalendarTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <!-- Replace with the service/user account that has SQL + Excel access. -->
+      <UserId>DAMASCUS\\kpi_refresh</UserId>
+      <LogonType>Password</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>true</RunOnlyIfNetworkAvailable>
+    <ExecutionTimeLimit>PT15M</ExecutionTimeLimit>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <WakeToRun>false</WakeToRun>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>powershell.exe</Command>
+      <Arguments>-NoProfile -ExecutionPolicy Bypass -File "C:\xampp\htdocs\Damascus-KPI\qlik\refresh_qlik_diff.ps1" -WorkbookPath "C:\Qlik\PRIMS_SAP_Diff.xlsx"</Arguments>
+    </Exec>
+  </Actions>
+</Task>

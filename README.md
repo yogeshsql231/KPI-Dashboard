@@ -123,6 +123,16 @@ php etl/pull_shipments.php --source=PRODHANA
 For **PRODHANA (SAP HANA)** use the HANA ODBC driver and set an ODBC DSN, then
 `PRODHANA_DB_DRIVER=odbc` with `PRODHANA_DB_NAME=<DSN name>`.
 
+## Qlik live data connection (SCRUM-31)
+
+The Qlik ("Click") app runs off a SQL Server stored procedure that surfaces the
+**differences between PRIMS and SAP/PRODHANA**. The procedure's output is linked
+into an Excel sheet (a **live** link, not a static export) that Qlik reads,
+refreshed every 30 minutes plus on-demand. The connection mechanism —
+stored procedure, live Excel `.odc` link, and refresh scaffolding — lives in
+[`qlik/`](qlik/README.md). Which specific Qlik sheets/visualizations bind to
+this feed is still pending confirmation (flagged in `qlik/README.md`).
+
 ## Security notes
 - Credentials only via environment / `.env` (never hard-coded; `.env` is gitignored).
 - PDO with `ERRMODE_EXCEPTION` and `EMULATE_PREPARES = false` (true server-side prepared statements).
@@ -132,5 +142,6 @@ For **PRODHANA (SAP HANA)** use the HANA ODBC driver and set an ODBC DSN, then
 
 ## Roadmap
 - Fill in the PRIMSBM / PRODHANA source queries and schedule the ETL (cron / Task Scheduler).
+- Confirm which Qlik sheets/visualizations bind to the PRIMS vs SAP/PRODHANA live diff feed (see `qlik/`).
 - Additional dashboards from the requirements doc (Production, Quality, Warehouse, Procurement…).
 - Authentication / RBAC when required.
