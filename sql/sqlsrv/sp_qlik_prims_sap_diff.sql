@@ -63,12 +63,24 @@ BEGIN
     -- ADJUST to the real linked-server name on this box.
     DECLARE @HanaLinkedServer SYSNAME = N'PRODHANA';
 
+    IF OBJECT_ID('tempdb..#sap')   IS NOT NULL DROP TABLE #sap;
+    IF OBJECT_ID('tempdb..#prims') IS NOT NULL DROP TABLE #prims;
+
     -- OPENQUERY needs a string literal for the linked-server name, so the SAP
     -- pull is assembled and run through dynamic SQL. The inner HANA query is
-    -- READ-ONLY. Snapshot both systems into temp tables, then diff them.
+    -- READ-ONLY. The temp table must be created in THIS (outer) scope and
+    -- populated via INSERT ... EXEC — a temp table created with SELECT ... INTO
+    -- inside sp_executesql is local to that nested batch and is dropped before
+    -- the outer procedure can read it.
+    CREATE TABLE #sap (
+        item_code VARCHAR(50)   NULL,
+        warehouse VARCHAR(50)   NULL,
+        sap_qty   DECIMAL(18,4) NULL,
+        sap_value DECIMAL(18,4) NULL
+    );
+
     DECLARE @sapSql NVARCHAR(MAX) =
         N'SELECT item_code, warehouse, sap_qty, sap_value
-          INTO #sap
           FROM OPENQUERY(' + QUOTENAME(@HanaLinkedServer) + N', ''
               SELECT
                   W."ItemCode"                         AS item_code,
@@ -79,9 +91,7 @@ BEGIN
               INNER JOIN "DAMASCUS_BAKERY"."OITM" I ON I."ItemCode" = W."ItemCode"
           '');';
 
-    IF OBJECT_ID('tempdb..#sap')   IS NOT NULL DROP TABLE #sap;
-    IF OBJECT_ID('tempdb..#prims') IS NOT NULL DROP TABLE #prims;
-
+    INSERT INTO #sap (item_code, warehouse, sap_qty, sap_value)
     EXEC sp_executesql @sapSql;
 
     -- =======================================================================
