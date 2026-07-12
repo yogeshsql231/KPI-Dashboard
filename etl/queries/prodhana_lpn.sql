@@ -8,7 +8,9 @@
 -- live DAMASCUS_BAKERY schema). Output column names match lpn_pallets exactly
 -- so the ETL upserts straight in. READ-ONLY (SELECT) — never writes to SAP.
 --
--- Run through the SQL Server linked server (no direct HANA login needed):
+-- Run directly against HANA over ODBC (PRODHANA_* settings in .env):
+--   php etl/pull_lpn.php --source=prodhana
+-- or through the SQL Server linked server (no direct HANA login needed):
 --   php etl/pull_lpn.php --source=PRIMSBM --query=etl/queries/prodhana_lpn.sql --via=PRODHANA
 -- ===========================================================================
 

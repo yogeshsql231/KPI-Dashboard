@@ -10,6 +10,7 @@ declare(strict_types=1);
  * Run on the local server (XAMPP box) where the source DBs are reachable:
  *
  *   php etl/pull_lpn.php --source=PRIMSBM
+ *   php etl/pull_lpn.php --source=prodhana                 (direct HANA over ODBC)
  *   php etl/pull_lpn.php --source=PRIMSBM  --dry-run
  *   php etl/pull_lpn.php --source=PRIMSBM  --query=etl/queries/primsbm_lpn.sql
  *   php etl/pull_lpn.php --source=PRIMSBM  --query=etl/queries/prodhana_lpn.sql --via=PRODHANA

@@ -45,17 +45,22 @@ final class SourceDb
         $user   = (string) env($prefix . '_DB_USER', '');
         $pass   = (string) env($prefix . '_DB_PASS', '');
 
-        // ODBC connects through a named DSN, which already carries the host/port,
-        // so only the DSN name (<PREFIX>_DB_NAME) is required for that driver.
+        // ODBC connects either through a named DSN (set <PREFIX>_DB_NAME to the
+        // DSN name) or DSN-less via a full connection string in <PREFIX>_DB_DSN
+        // (e.g. Driver={HDBODBC};ServerNode=192.168.100.3:30015). When _DB_DSN
+        // is empty but _DB_HOST is set, a HANA-style DSN-less string is built
+        // from _DB_HOST/_DB_PORT using the ODBC driver named in
+        // <PREFIX>_DB_ODBC_DRIVER (default HDBODBC).
         if ($driver === 'odbc') {
-            if ($name === '') {
-                throw new RuntimeException("Source '$prefix' is not configured (missing ODBC DSN name in {$prefix}_DB_NAME).");
+            $dsnStr = (string) env($prefix . '_DB_DSN', '');
+            if ($dsnStr === '' && $name === '' && $host === '') {
+                throw new RuntimeException("Source '$prefix' is not configured (set {$prefix}_DB_DSN, {$prefix}_DB_NAME or {$prefix}_DB_HOST).");
             }
         } elseif ($host === '' || $name === '') {
             throw new RuntimeException("Source '$prefix' is not configured (missing host/name in .env).");
         }
 
-        $dsn = self::buildDsn($driver, $host, $port, $name);
+        $dsn = self::buildDsn($driver, $host, $port, $name, $prefix);
 
         $options = [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
@@ -86,7 +91,7 @@ final class SourceDb
         return $pdo;
     }
 
-    private static function buildDsn(string $driver, string $host, string $port, string $name): string
+    private static function buildDsn(string $driver, string $host, string $port, string $name, string $prefix = ''): string
     {
         return match ($driver) {
             'sqlsrv' => sprintf(
@@ -101,7 +106,7 @@ final class SourceDb
                 $port !== '' ? ':' . $port : '',
                 $name
             ),
-            'odbc' => sprintf('odbc:%s', $name), // $name = an ODBC DSN name
+            'odbc' => 'odbc:' . self::odbcConnectString($host, $port, $name, $prefix),
             'mysql' => sprintf(
                 'mysql:host=%s%s;dbname=%s;charset=utf8mb4',
                 $host,
@@ -110,5 +115,30 @@ final class SourceDb
             ),
             default => throw new RuntimeException("Unsupported source driver '$driver'."),
         };
+    }
+
+    /**
+     * Resolve the ODBC connection target, in order of precedence:
+     *   1. <PREFIX>_DB_DSN   — full DSN-less connection string, used verbatim
+     *   2. <PREFIX>_DB_HOST  — DSN-less string built for the driver in
+     *                          <PREFIX>_DB_ODBC_DRIVER (default HDBODBC for HANA)
+     *   3. <PREFIX>_DB_NAME  — a named ODBC DSN configured in the OS
+     */
+    private static function odbcConnectString(string $host, string $port, string $name, string $prefix): string
+    {
+        $dsnStr = (string) env($prefix . '_DB_DSN', '');
+        if ($dsnStr !== '') {
+            return $dsnStr;
+        }
+        if ($host !== '') {
+            $odbcDriver = (string) env($prefix . '_DB_ODBC_DRIVER', 'HDBODBC');
+            return sprintf(
+                'Driver={%s};ServerNode=%s:%s',
+                $odbcDriver,
+                $host,
+                $port !== '' ? $port : '30015'
+            );
+        }
+        return $name; // named ODBC DSN
     }
 }
