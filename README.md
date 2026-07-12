@@ -100,11 +100,10 @@ table — nothing is ever written back to PRIMSBM/PRODHANA.
 ```bash
 php etl/pull_shipments.php --source=PRIMSBM            # pull + upsert
 php etl/pull_shipments.php --source=PRIMSBM --dry-run  # preview, writes nothing
-php etl/pull_shipments.php --source=PRODHANA
 ```
 
-1. Set the source connection vars in `.env` (`PRIMSBM_DB_*`, `PRODHANA_DB_*`).
-   Use a **read-only** login (not `sa`).
+1. Set the PRIMSBM source connection vars in `.env` (`PRIMSBM_DB_*`).
+   Use a dedicated login with only the permissions needed by the ETL.
 2. Fill in the source query so its output columns match the KPI fields:
    `etl/queries/primsbm_shipments.sql` and `etl/queries/prodhana_shipments.sql`
    (required aliases: `source_key, ship_date, po_number, customer, ship_via,
@@ -120,8 +119,27 @@ php etl/pull_shipments.php --source=PRODHANA
 3. Install the [ODBC Driver for SQL Server](https://learn.microsoft.com/sql/connect/odbc/download-odbc-driver-for-sql-server).
 4. Verify: `php -m | findstr sqlsrv`.
 
-For **PRODHANA (SAP HANA)** use the HANA ODBC driver and set an ODBC DSN, then
-`PRODHANA_DB_DRIVER=odbc` with `PRODHANA_DB_NAME=<DSN name>`.
+### PRODHANA through the SQL Server linked server
+
+PRODHANA is accessed only through the `PRODHANA` linked server on PRIMSBM.
+Direct HANA ODBC (`--source=PRODHANA`) is not supported because there is no
+standalone HANA-native account provisioned for the dashboard.
+
+```bash
+php etl/source_check.php --source=PRIMSBM
+php etl/pull_lpn.php --source=PRIMSBM --query=etl/queries/prodhana_lpn.sql --via=PRODHANA
+```
+
+The LPN pull is read-only on both upstream systems. It wraps the HANA query in
+`OPENQUERY([PRODHANA], '...')` and writes the returned rows only to local
+MySQL. On Windows, `etl\run_pull_lpn_prodhana.bat` runs the connection check,
+aborts on failure, executes the bridge pull, and logs to
+`etl\logs\pull_lpn_prodhana_YYYYMMDD.log`. Configure Task Scheduler to run it
+hourly and to avoid starting a new instance while a previous run is active.
+
+The SQL Server login must not be `sysadmin`. Give it an explicit linked-server
+login mapping to an approved read-only HANA security context and only the local
+database permissions required to execute the ETL query.
 
 ## Qlik live data connection (SCRUM-31)
 

@@ -40,6 +40,15 @@ $dryRun = array_key_exists('dry-run', $opts);
 $printSql = array_key_exists('print-sql', $opts);
 $limit  = isset($opts['limit']) ? (int) $opts['limit'] : 0;
 
+if ($source === 'PRODHANA') {
+    fwrite(
+        STDERR,
+        "Direct PRODHANA connections are not supported. Use --source=PRIMSBM "
+        . "--query=etl/queries/prodhana_lpn.sql --via=PRODHANA\n"
+    );
+    exit(1);
+}
+
 $queryFile = (string) ($opts['query'] ?? (__DIR__ . '/queries/' . strtolower($source) . '_lpn.sql'));
 if (!is_readable($queryFile)) {
     fwrite(STDERR, "Query file not found: $queryFile\n");
