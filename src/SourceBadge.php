@@ -46,6 +46,8 @@ final class SourceBadge
             'Batch admission/expiry dates for aging buckets.'],
         'movements' => ['sap', 'inventory documents → material_movements',
             'Stock transfers, goods issues to production and scrap issues.'],
+        'stockout' => ['sap', 'OITW/OITM → inventory_stock_snapshots',
+            'Stockout Frequency = active SKUs that hit zero on-hand during the period ÷ active SKUs, from daily on-hand snapshots.'],
         'production' => ['sap', 'OWOR/WOR1 → production_usage',
             'Planned vs. actually issued component quantities on production orders.'],
         'lpn' => ['beas', '@BMM_PALLETMASTER/@BMM_BINDETAIL → lpn_pallets',
