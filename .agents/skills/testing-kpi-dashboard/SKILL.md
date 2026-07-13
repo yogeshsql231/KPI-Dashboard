@@ -5,6 +5,10 @@ description: Test the KPI Dashboard PHP pages (Overview, Delivery, Warehouse, Cu
 
 # Testing the KPI Dashboard locally
 
+## Before testing a "merged" feature: verify it's actually on main
+- Stacked PRs are risky here: PR #65 (SCRUM-87) merged into its base feature branch *after* that branch had already merged to main, so the commit never reached main. Symptom on the user's box: "migration file not found".
+- Always confirm with `git merge-base --is-ancestor <commit> main` (or `git show main:<new file>`) before testing/deploying a feature believed merged. If stranded, cherry-pick onto a fresh branch off main and open a restore PR.
+
 ## Setup
 1. Start MySQL: `sudo service mysql start`. Local DB: `kpi_dashboard`, user `kpi_app`, password `kpi_local_pw` (dev-only). If the DB is missing, apply `sql/*.sql` then `sql/migrations/*.sql` in order, and seed with the sample-data scripts used in prior sessions (see repo history / `/home/ubuntu/attachments/gen_*seed*.py` if present).
 2. Serve: `php -S 127.0.0.1:8090 -t public` (run in background). Pages: `overview.php`, `dashboard.php` (Delivery), `warehouse.php`, `dashboard_cs.php` (Customer Service), `procurement.php`, `audit.php`.
@@ -22,6 +26,7 @@ description: Test the KPI Dashboard PHP pages (Overview, Delivery, Warehouse, Cu
 - Overview has client-side behaviors driven by `DATA` JSON in `public/overview.php` + `public/assets/overview.css`: date→warehouse filter lock (warehouse buttons `pointer-events:none` until both dates set), KPI tile hover trend, pallet Loaves/Bars toggle, correlation month drill-down, drag-to-reorder sections.
 - Layout + pallet-view preferences persist in localStorage key `ovLayout:<user>`; "reset layout" clears them. When retesting, prior sessions' saved prefs may make the initial view differ from defaults (e.g. Bars instead of Loaves) — that's persistence working, not a bug.
 - HTML5 drag-reorder works with a plain `left_click_drag` from a ⠿ section handle to above another section label; watch for the "saved" flash in the filter bar.
+- A/R aging (open invoices) widget: the shipped seed usually has NO open invoices (all rows paid), so the section shows its empty state. To test buckets, insert temp `ar_payments` rows with `paid_date NULL` and `source_system='SAMPLE-OPEN'` spanning each bucket (include a partial payment: open = invoice_amount − paid_amount), verify against a GROUP BY on `DATEDIFF(CURDATE(), due_date)`, then `DELETE FROM ar_payments WHERE source_system='SAMPLE-OPEN'`. The widget is a today-snapshot and ignores the page date filter — don't expect it to change when filtering.
 - Correlation drill-down $ values can be DB-verified with: SUM(paid_amount) on `ar_payments` grouped by customer WHERE invoice_date in the clicked month AND paid_date > due_date (matches `PaymentRepository::topLatePayers`). Note byMonth groups by invoice_date, not due_date.
 - Seed data may cover only ~1 week of deliveries, so trend charts might show a single point/bar — document as a data limitation, not a failure.
 
