@@ -62,6 +62,8 @@ final class SourceBadge
             'Warehouse pallet capacities maintained by hand in the local cache — not from SAP.'],
         'alerts' => ['api', 'audit engine → audit_alerts',
             'Alerts raised by the local audit engine over cached SAP data.'],
+        'supplier_otif' => ['sap', 'OPOR/POR1 + OPDN/PDN1 → po_lines',
+            'Supplier OTIF = purchase orders received on-time AND in-full ÷ total POs; received means goods-receipt-PO qty vs. ordered, on-time means last receipt on/before the promised date + 1 day grace. Whole-PO level: one bad line fails the PO. Cancelled POs excluded.'],
     ];
 
     /** Render the standardized badge for a metric key. */
