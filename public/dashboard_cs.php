@@ -15,6 +15,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/KpiRepository.php';
 require_once __DIR__ . '/../src/Filters.php';
+require_once __DIR__ . '/../src/SourceBadge.php';
 
 Auth::requireDepartment('customer_service');
 $canSeeFinancials = Auth::isCLevel();
@@ -205,7 +206,7 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
 
     <div class="grid">
         <section class="panel">
-            <h2>Order Status Tracking</h2>
+            <h2>Order Status Tracking <?= SourceBadge::render('ordered') ?></h2>
             <p class="panel-note">Sales orders from the SAP delivery cache grouped by status — orders, customer POs and how much of each status is released and shipped. Source: <code>delivery_lines</code> via <code>etl/pull_delivery.php</code>.</p>
             <table>
                 <thead>
@@ -232,7 +233,7 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
         </section>
 
         <section class="panel">
-            <h2>Customer Demographics</h2>
+            <h2>Customer Demographics <?= SourceBadge::render('customers') ?></h2>
             <p class="panel-note">Retail vs the other SAP customer groups (OCRG) — how many customers, orders and shipped cases each type accounts for. Source: <code>delivery_lines</code> via <code>etl/pull_delivery.php</code>.</p>
             <table>
                 <thead>
@@ -258,7 +259,7 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
         </section>
 
         <section class="panel">
-            <h2>OTIF &amp; Fill Rate by Date</h2>
+            <h2>OTIF &amp; Fill Rate by Date <?= SourceBadge::render('fulfilment') ?></h2>
             <table>
                 <thead>
                     <tr><th>Date</th><th>Lines</th><th>OTIF</th><th>Fill Rate</th><th>Short</th></tr>
@@ -281,7 +282,7 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
         </section>
 
         <section class="panel">
-            <h2>Complaints by Concern Type</h2>
+            <h2>Complaints by Concern Type <?= SourceBadge::render('complaints') ?></h2>
             <table>
                 <thead><tr><th>Concern Type</th><th>Count</th></tr></thead>
                 <tbody>
@@ -299,7 +300,7 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
         </section>
 
         <section class="panel">
-            <h2>Top Customers by Cases Shipped</h2>
+            <h2>Top Customers by Cases Shipped <?= SourceBadge::render('shipments') ?></h2>
             <table>
                 <thead><tr><th>Customer</th><th>Cases</th></tr></thead>
                 <tbody>
@@ -317,7 +318,7 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
         </section>
 
         <section class="panel">
-            <h2>Top SKUs by Cases Shipped</h2>
+            <h2>Top SKUs by Cases Shipped <?= SourceBadge::render('shipments') ?></h2>
             <table>
                 <thead><tr><th>Item #</th><th>Cases</th></tr></thead>
                 <tbody>
