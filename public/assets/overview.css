@@ -1,8 +1,8 @@
-/* Overview (v2 redesign, SCRUM-82) — dark executive theme scoped to overview.php */
+/* Overview (v2 redesign, SCRUM-82) — light executive theme scoped to overview.php */
 :root{
-  --ov-bg:#14151A;--ov-card:#1C1E24;--ov-border:#2A2D35;--ov-txt:#EDEDEF;--ov-txt2:#C4C6CE;
-  --ov-mut:#8B8D98;--ov-dim:#5C5F6A;--ov-faint:#3A3D46;
-  --ov-gold:#C99A2E;--ov-green:#4C9A6E;--ov-red:#D5766A;--ov-blue:#7C9FC9;--ov-purple:#9C7CC9;
+  --ov-bg:#F5F6F8;--ov-card:#FFFFFF;--ov-border:#E2E4EA;--ov-txt:#1C1E24;--ov-txt2:#3A3D46;
+  --ov-mut:#6B6E78;--ov-dim:#8B8D98;--ov-faint:#C9CCD4;
+  --ov-gold:#B58620;--ov-green:#3E8760;--ov-red:#C05A4D;--ov-blue:#4A79A8;--ov-purple:#8460B3;
 }
 body.ov-dark{background:var(--ov-bg);color:var(--ov-txt);}
 body.ov-dark .topbar{background:var(--ov-card);border-bottom:1px solid var(--ov-border);box-shadow:none;}
@@ -12,7 +12,7 @@ body.ov-dark .topnav a:hover{color:var(--ov-txt);}
 body.ov-dark .topnav a.active{color:var(--ov-gold);}
 body.ov-dark .user-chip,body.ov-dark .user-name{color:var(--ov-txt2);}
 body.ov-dark .footer{color:var(--ov-dim);}
-body.ov-dark .alert{background:#2a1d1d;border:1px solid #4a2c2c;color:#e8b4b4;}
+body.ov-dark .alert{background:#FBEDEB;border:1px solid #E8C7C2;color:#9C3F33;}
 body.ov-dark .note{background:var(--ov-card);border:1px solid var(--ov-border);color:var(--ov-mut);}
 body.ov-dark code{background:var(--ov-border);color:var(--ov-txt2);}
 
@@ -26,16 +26,16 @@ body.ov-dark code{background:var(--ov-border);color:var(--ov-txt2);}
 .fbar{display:flex;align-items:center;flex-wrap:wrap;gap:12px;border-bottom:1px solid var(--ov-border);padding-bottom:16px;margin-bottom:26px;}
 .fbar .fdate{display:flex;align-items:center;gap:7px;background:var(--ov-card);border:1px solid var(--ov-border);border-radius:6px;padding:4px 10px;}
 .fbar .fdate .cal{color:var(--ov-gold);font-size:13px;}
-.fbar .fdate input[type=date]{background:none;border:0;color:var(--ov-txt);font-size:12px;color-scheme:dark;outline:none;}
+.fbar .fdate input[type=date]{background:none;border:0;color:var(--ov-txt);font-size:12px;color-scheme:light;outline:none;}
 .fbar .fdate .to{color:var(--ov-dim);font-size:11px;}
 .fbar .chev{color:var(--ov-faint);font-size:14px;}
 .whbtn{background:var(--ov-card);border:1px solid var(--ov-border);color:var(--ov-mut);font-size:12px;font-weight:500;padding:7px 12px;border-radius:6px;cursor:pointer;transition:.15s;}
 .whbtn:hover{color:var(--ov-txt);}
-.whbtn.on{background:var(--ov-gold);color:#14151A;border-color:var(--ov-gold);}
+.whbtn.on{background:var(--ov-gold);color:#fff;border-color:var(--ov-gold);}
 .whwrap{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .whwrap.locked{opacity:.35;pointer-events:none;}
 .whlock{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--ov-dim);}
-.fbar .apply{background:var(--ov-gold);border:1px solid var(--ov-gold);color:#14151A;font-size:12px;font-weight:600;padding:7px 14px;border-radius:6px;cursor:pointer;}
+.fbar .apply{background:var(--ov-gold);border:1px solid var(--ov-gold);color:#fff;font-size:12px;font-weight:600;padding:7px 14px;border-radius:6px;cursor:pointer;}
 .fbar .ghost{background:none;border:1px solid var(--ov-border);color:var(--ov-mut);font-size:12px;padding:7px 12px;border-radius:6px;cursor:pointer;text-decoration:none;}
 .fbar .ghost:hover{color:var(--ov-txt);}
 .fbar .right{margin-left:auto;display:flex;align-items:center;gap:12px;font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--ov-faint);}
@@ -83,7 +83,7 @@ body.ov-dark code{background:var(--ov-border);color:var(--ov-txt2);}
 .ptop{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
 .vtoggle{display:flex;border:1px solid var(--ov-border);border-radius:6px;overflow:hidden;}
 .vtoggle button{background:none;border:0;color:var(--ov-mut);font-size:10px;text-transform:uppercase;letter-spacing:.1em;padding:5px 10px;cursor:pointer;}
-.vtoggle button.on{background:var(--ov-gold);color:#14151A;}
+.vtoggle button.on{background:var(--ov-gold);color:#fff;}
 .plegend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;font-size:12px;}
 .plegend .li{display:flex;align-items:center;gap:7px;color:var(--ov-txt2);}
 .plegend b{width:8px;height:8px;border-radius:50%;display:inline-block;}
@@ -150,9 +150,9 @@ svg.linechart text{font-family:inherit;}
 /* Customer & Division Mix (SCRUM-28) */
 .divscroll{max-height:260px;overflow-y:auto;}
 .divtable{width:100%;border-collapse:collapse;font-size:12px;}
-.divtable th{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--ov-dim);text-align:left;padding:4px 8px;border-bottom:1px solid #2A2D35;}
+.divtable th{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--ov-dim);text-align:left;padding:4px 8px;border-bottom:1px solid var(--ov-border);}
 .divtable th.r,.divtable td.r{text-align:right;font-variant-numeric:tabular-nums;}
 .divtable td{padding:5px 8px;color:var(--ov-txt2);}
-.divtable tr.divrow td{background:#22242B;color:var(--ov-txt);font-weight:600;border-top:1px solid #2A2D35;}
+.divtable tr.divrow td{background:#EEF0F4;color:var(--ov-txt);font-weight:600;border-top:1px solid var(--ov-border);}
 .divtable .dcount{font-weight:400;font-size:10px;color:var(--ov-mut);}
 .divtable tr.custrow td.cn{padding-left:22px;color:var(--ov-mut);}

@@ -637,7 +637,7 @@ $chartData = [
 
     <script>
     const DATA = <?= json_encode($chartData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-    const GOLD = '#C99A2E', GREEN = '#4C9A6E', RED = '#D5766A', BLUE = '#7C9FC9', PURPLE = '#9C7CC9', DIM = '#5C5F6A', FAINT = '#3A3D46';
+    const GOLD = '#B58620', GREEN = '#3E8760', RED = '#C05A4D', BLUE = '#4A79A8', PURPLE = '#8460B3', DIM = '#8B8D98', FAINT = '#C9CCD4';
     const STATUS_COLORS = { 'Ready': GOLD, 'Waiting': '#8B8D98', 'Delivered': GREEN, 'In Stock': GOLD, 'Picked': BLUE, 'Shipped': GREEN, 'Expired': RED };
     const EXTRA_COLORS = [GOLD, BLUE, GREEN, PURPLE, RED, DIM];
     const usd = (v) => '$' + Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -742,7 +742,7 @@ $chartData = [
         const pts = series.map((v, i) => x(i) + ',' + y(v)).join(' ');
         const avgPts = movingAvg.map((v, i) => v === null ? null : x(i) + ',' + y(v)).filter(Boolean).join(' ');
         el.innerHTML = '<svg class="linechart" viewBox="0 0 400 150" width="100%" height="150">' +
-            [0.25, 0.6, 0.95].map((f) => '<line x1="0" y1="' + (H - BOT - f * (H - BOT - 14)) + '" x2="400" y2="' + (H - BOT - f * (H - BOT - 14)) + '" stroke="#22242B"/>').join('') +
+            [0.25, 0.6, 0.95].map((f) => '<line x1="0" y1="' + (H - BOT - f * (H - BOT - 14)) + '" x2="400" y2="' + (H - BOT - f * (H - BOT - 14)) + '" stroke="#E2E4EA"/>').join('') +
             (avgPts ? '<polyline points="' + avgPts + '" fill="none" stroke="#5C5F6A" stroke-width="1.5" stroke-dasharray="5 4"/>' : '') +
             '<polyline points="' + pts + '" fill="none" stroke="#C99A2E" stroke-width="2.5"/>' +
             '<g fill="#C99A2E">' + series.map((v, i) => '<circle cx="' + x(i) + '" cy="' + y(v) + '" r="3"><title>' + labels[i] + ': ' + (DATA.showMoney ? usdShort(v) : Number(v).toLocaleString()) + '</title></circle>').join('') + '</g>' +
@@ -759,7 +759,7 @@ $chartData = [
         const by = (v) => (v / bmx) * (H - BOT - 14);
         const ly = (v) => H - BOT - (v / lmx) * (H - BOT - 14);
         el.innerHTML = '<svg class="linechart" viewBox="0 0 400 150" width="100%" height="150">' +
-            [0.25, 0.6, 0.95].map((f) => '<line x1="0" y1="' + (H - BOT - f * (H - BOT - 14)) + '" x2="400" y2="' + (H - BOT - f * (H - BOT - 14)) + '" stroke="#22242B"/>').join('') +
+            [0.25, 0.6, 0.95].map((f) => '<line x1="0" y1="' + (H - BOT - f * (H - BOT - 14)) + '" x2="400" y2="' + (H - BOT - f * (H - BOT - 14)) + '" stroke="#E2E4EA"/>').join('') +
             '<g fill="#2E3440">' + bars.map((v, i) => '<rect x="' + (x(i) - BW / 2) + '" y="' + (H - BOT - by(v)) + '" width="' + BW + '" height="' + by(v) + '" rx="3"><title>' + labels[i] + ': ' + (DATA.showMoney ? usdShort(v) : Number(v).toLocaleString() + ' orders') + '</title></rect>').join('') + '</g>' +
             '<polyline points="' + line.map((v, i) => x(i) + ',' + ly(v)).join(' ') + '" fill="none" stroke="#D5766A" stroke-width="2"/>' +
             '<g fill="#D5766A">' + line.map((v, i) => '<circle cx="' + x(i) + '" cy="' + ly(v) + '" r="3"><title>' + labels[i] + ': ' + v + ' late lines</title></circle>').join('') + '</g>' +
