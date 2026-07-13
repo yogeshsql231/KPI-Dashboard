@@ -507,6 +507,147 @@ final class WarehouseInventoryRepository
         return $stmt->fetchAll();
     }
 
+    // ---- Stockout frequency (SCRUM-93) --------------------------------------
+
+    /** Whether migration 014 (daily on-hand snapshots) has been loaded. */
+    public function hasStockSnapshots(): bool
+    {
+        return $this->tableExists('inventory_stock_snapshots')
+            && (int) $this->pdo->query('SELECT COUNT(*) FROM inventory_stock_snapshots')->fetchColumn() > 0;
+    }
+
+    /**
+     * Shared WHERE fragment for the snapshot view: active SKUs only, with the
+     * date range applied to snapshot_date plus the warehouse/item filters.
+     *
+     * @return array{0:string,1:array<int,mixed>}
+     */
+    private function snapshotClause(DeliveryFilters $f): array
+    {
+        $conds = ['is_active = 1'];
+        $params = [];
+        if ($f->fromDate !== null) {
+            $conds[] = 'snapshot_date >= ?';
+            $params[] = $f->fromDate;
+        }
+        if ($f->toDate !== null) {
+            $conds[] = 'snapshot_date <= ?';
+            $params[] = $f->toDate;
+        }
+        if ($f->warehouse !== null) {
+            $conds[] = 'std_warehouse = ?';
+            $params[] = $f->warehouse;
+        }
+        if ($f->item !== null) {
+            $conds[] = '(item_code LIKE ? OR item_description LIKE ?)';
+            $like = '%' . $f->item . '%';
+            $params[] = $like;
+            $params[] = $like;
+        }
+        return [implode(' AND ', $conds), $params];
+    }
+
+    /**
+     * Stockout Frequency headline over the selected filters: how many active
+     * SKUs hit zero on-hand at any snapshot in the period, as a share of all
+     * active SKUs, plus the raw stockout-day event count. Returns null when no
+     * snapshot history has been loaded yet.
+     *
+     * @return array{active_skus:int,stockout_skus:int,frequency:float|null,events:int,snapshot_days:int,from:?string,to:?string}|null
+     */
+    public function stockoutFrequency(DeliveryFilters $f): ?array
+    {
+        if (!$this->hasStockSnapshots()) {
+            return null;
+        }
+        [$where, $params] = $this->snapshotClause($f);
+        $stmt = $this->pdo->prepare(
+            "SELECT COUNT(DISTINCT item_code) AS active_skus,
+                    COUNT(DISTINCT CASE WHEN is_stockout = 1 THEN item_code END) AS stockout_skus,
+                    COALESCE(SUM(is_stockout), 0) AS events,
+                    COUNT(DISTINCT snapshot_date) AS snapshot_days,
+                    MIN(snapshot_date) AS from_date,
+                    MAX(snapshot_date) AS to_date
+             FROM vw_stock_snapshots WHERE $where"
+        );
+        $stmt->execute($params);
+        $row = $stmt->fetch() ?: [];
+        $active = (int) ($row['active_skus'] ?? 0);
+        $stockout = (int) ($row['stockout_skus'] ?? 0);
+        return [
+            'active_skus' => $active,
+            'stockout_skus' => $stockout,
+            'frequency' => $active > 0 ? $stockout / $active : null,
+            'events' => (int) ($row['events'] ?? 0),
+            'snapshot_days' => (int) ($row['snapshot_days'] ?? 0),
+            'from' => $row['from_date'] ?? null,
+            'to' => $row['to_date'] ?? null,
+        ];
+    }
+
+    /**
+     * Stockout frequency broken out by one dimension: warehouse location or
+     * SAP category. Highest stockout SKU count first.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function stockoutByDimension(DeliveryFilters $f, string $dim): array
+    {
+        if (!$this->hasStockSnapshots()) {
+            return [];
+        }
+        $dims = [
+            'location' => 'std_warehouse',
+            'category' => 'std_category',
+        ];
+        $col = $dims[$dim] ?? $dims['location'];
+        [$where, $params] = $this->snapshotClause($f);
+        $stmt = $this->pdo->prepare(
+            "SELECT $col AS grp,
+                    COUNT(DISTINCT item_code) AS active_skus,
+                    COUNT(DISTINCT CASE WHEN is_stockout = 1 THEN item_code END) AS stockout_skus,
+                    COALESCE(SUM(is_stockout), 0) AS events
+             FROM vw_stock_snapshots
+             WHERE $where
+             GROUP BY $col
+             ORDER BY stockout_skus DESC, grp"
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Per-SKU stockout worklist (item x warehouse): SKUs that hit zero on-hand
+     * during the period, most stockout-days first.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function stockoutSkuRows(DeliveryFilters $f, int $limit = 200): array
+    {
+        if (!$this->hasStockSnapshots()) {
+            return [];
+        }
+        [$where, $params] = $this->snapshotClause($f);
+        $stmt = $this->pdo->prepare(
+            "SELECT item_code,
+                    MAX(item_description) AS item_description,
+                    std_warehouse AS warehouse,
+                    std_category  AS category,
+                    COALESCE(SUM(is_stockout), 0) AS stockout_days,
+                    COUNT(DISTINCT snapshot_date) AS observed_days,
+                    MAX(CASE WHEN is_stockout = 1 THEN snapshot_date END) AS last_stockout,
+                    MIN(on_hand) AS min_on_hand
+             FROM vw_stock_snapshots
+             WHERE $where
+             GROUP BY item_code, std_warehouse, std_category
+             HAVING stockout_days > 0
+             ORDER BY stockout_days DESC, last_stockout DESC, item_code
+             LIMIT " . (int) $limit
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
     /** Distinct warehouses seen across the stock/batch caches, for the buttons. */
     public function warehouseOptions(): array
     {
@@ -521,6 +662,11 @@ final class WarehouseInventoryRepository
                 $set[(string) $w] = true;
             }
         }
+        if ($this->hasStockSnapshots()) {
+            foreach ($this->pdo->query('SELECT DISTINCT std_warehouse FROM vw_stock_snapshots WHERE std_warehouse <> \'\' ORDER BY std_warehouse')->fetchAll(PDO::FETCH_COLUMN) as $w) {
+                $set[(string) $w] = true;
+            }
+        }
         $out = array_keys($set);
         sort($out);
         return $out;
@@ -530,7 +676,7 @@ final class WarehouseInventoryRepository
     public function lastRefreshed(): ?string
     {
         $times = [];
-        foreach (['warehouse_stock', 'inventory_batches', 'material_packaging', 'material_movements', 'production_usage'] as $t) {
+        foreach (['warehouse_stock', 'inventory_batches', 'material_packaging', 'material_movements', 'production_usage', 'inventory_stock_snapshots'] as $t) {
             if ($this->tableExists($t)) {
                 $v = $this->pdo->query("SELECT MAX(refreshed_at) FROM $t")->fetchColumn();
                 if ($v) {

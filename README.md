@@ -141,6 +141,28 @@ The SQL Server login must not be `sysadmin`. Give it an explicit linked-server
 login mapping to an approved read-only HANA security context and only the local
 database permissions required to execute the ETL query.
 
+## Stockout Frequency snapshots (SCRUM-93)
+
+The Stockout Frequency widget on the Warehouse dashboard needs on-hand *history*
+to detect zero-crossings — the `warehouse_stock` cache only holds the current
+on-hand and is overwritten each run. `etl/pull_stock_snapshot.php` appends one
+dated row per item × warehouse to `inventory_stock_snapshots` (migration
+`014_stock_snapshots.sql`), including zero-on-hand rows and an `is_active` flag
+so discontinued SKUs drop out of the denominator.
+
+```bash
+php etl/pull_stock_snapshot.php --source=PRIMSBM                     # snapshot today
+php etl/pull_stock_snapshot.php --source=PRIMSBM --date=2026-07-13   # a specific day
+php etl/pull_stock_snapshot.php --source=PRIMSBM \
+    --query=etl/queries/prodhana_stock_snapshot.sql --via=PRODHANA   # HANA via the bridge
+```
+
+Run it once per day (Task Scheduler / cron): the metric only accrues history
+from the day capture begins. Back-filling past periods requires historical
+on-hand in SAP HANA — confirm with Raj whether HANA retains that before relying
+on pre-capture figures. Preview the widget with sample history via
+`mysql -u root kpi_dashboard < sql/warehouse_stock_snapshots_sample.sql`.
+
 ## Qlik live data connection (SCRUM-31)
 
 The Qlik ("Click") app runs off a SQL Server stored procedure that surfaces the

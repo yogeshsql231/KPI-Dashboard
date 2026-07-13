@@ -82,6 +82,14 @@ $packagingRows = [];
 $agedByWarehouse = [];
 $agedOutRows = [];
 $movementFlow = ['receipt' => 0.0, 'transfer' => 0.0, 'issue' => 0.0, 'waste' => 0.0];
+// Stockout frequency (SCRUM-93). Needs the daily on-hand snapshot history
+// (migration 014 + etl/pull_stock_snapshot.php); degrades to a hint until then.
+$hasStockout = false;
+$stockout = null;
+$stockoutSplit = [];
+$stockoutRows = [];
+$soSplit = isset($_GET['so_split']) && in_array($_GET['so_split'], ['location', 'category'], true)
+    ? (string) $_GET['so_split'] : 'location';
 $filters = DeliveryFilters::fromRequest($_GET);
 
 try {
@@ -120,6 +128,12 @@ try {
     $agedByWarehouse = $inv->agedByWarehouse($filters);
     $agedOutRows = $inv->agedOutRows($filters);
     $movementFlow = $inv->movementFlow($filters);
+    $hasStockout = $inv->hasStockSnapshots();
+    if ($hasStockout) {
+        $stockout = $inv->stockoutFrequency($filters);
+        $stockoutSplit = $inv->stockoutByDimension($filters, $soSplit);
+        $stockoutRows = $inv->stockoutSkuRows($filters);
+    }
     // Filter buttons cover every known warehouse: delivery history plus the
     // inventory caches (stock/batches), so RM/staging warehouses are selectable.
     $opts['warehouse'] = array_values(array_unique(array_merge($opts['warehouse'], $inv->warehouseOptions())));
@@ -349,7 +363,96 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
             <div class="card-value"><?= $invSummary['waste_pct'] !== null ? pct($invSummary['waste_pct']) : '—' ?></div>
             <div class="card-target">of issued qty</div>
         </div>
+        <?php
+            $soFreq = $stockout['frequency'] ?? null;
+            $soClass = $soFreq === null ? 'neutral' : ($soFreq >= 0.10 ? 'bad' : ($soFreq >= 0.05 ? 'warn' : 'good'));
+        ?>
+        <div class="card <?= $soClass ?>">
+            <div class="card-label">Stockout Frequency</div>
+            <div class="card-value"><?= $soFreq !== null ? pct($soFreq) : '—' ?></div>
+            <div class="card-target"><?= $stockout !== null ? num($stockout['stockout_skus']) . ' of ' . num($stockout['active_skus']) . ' SKUs' : 'load snapshots' ?></div>
+        </div>
     </section>
+
+    <section class="panel panel-wide">
+        <h2>Stockout Frequency <span class="pill info">SCRUM-93</span></h2>
+        <p class="panel-note">Share of active SKUs that hit <strong>zero on-hand</strong> at any daily snapshot in the selected period &mdash; the numerator counts distinct SKUs, and <strong>Events</strong> is the raw count of stockout-days observed. Discontinued/inactive SKUs are excluded from the denominator. Filterable by warehouse/category/date above. Source: <code>inventory_stock_snapshots</code> (migration <code>014</code> + <code>etl/pull_stock_snapshot.php</code>, run daily).</p>
+        <?php if (!$hasStockout): ?>
+            <p class="empty">No on-hand snapshot history loaded yet. Run migration <code>014_stock_snapshots.sql</code>, then capture snapshots daily with <code>php etl/pull_stock_snapshot.php --source=PRIMSBM</code> (or <code>--query=etl/queries/prodhana_stock_snapshot.sql --via=PRODHANA</code>). Stockout frequency needs at least one day of history; a longer period gives a more meaningful rate.</p>
+        <?php else: ?>
+            <div class="lpn-stats">
+                <span class="lpn-stat"><span class="lpn-stat-v"><?= $stockout['frequency'] !== null ? pct($stockout['frequency']) : '—' ?></span><span class="lpn-stat-k">Frequency</span></span>
+                <span class="lpn-stat"><span class="lpn-stat-v"><?= num($stockout['stockout_skus']) ?></span><span class="lpn-stat-k">Stockout SKUs</span></span>
+                <span class="lpn-stat"><span class="lpn-stat-v"><?= num($stockout['active_skus']) ?></span><span class="lpn-stat-k">Active SKUs</span></span>
+                <span class="lpn-stat"><span class="lpn-stat-v"><?= num($stockout['events']) ?></span><span class="lpn-stat-k">Events (SKU-days)</span></span>
+                <span class="lpn-stat"><span class="lpn-stat-v"><?= num($stockout['snapshot_days']) ?></span><span class="lpn-stat-k">Snapshot Days</span></span>
+            </div>
+            <p class="panel-note">Period covered:
+                <strong><?= $stockout['from'] !== null ? e($stockout['from']) : '—' ?></strong>
+                &rarr; <strong><?= $stockout['to'] !== null ? e($stockout['to']) : '—' ?></strong>.
+                <?php if ((int) $stockout['snapshot_days'] <= 1): ?><span class="muted">Only one snapshot day in range &mdash; this is a point-in-time rate, not a true period frequency.</span><?php endif; ?>
+            </p>
+            <?php
+                $soSplitQs = static function (string $d): string {
+                    $q = $_GET;
+                    $q['so_split'] = $d;
+                    return 'warehouse.php?' . http_build_query($q);
+                };
+            ?>
+            <div class="wh-buttons" style="margin-bottom:10px">
+                <?php foreach (['location' => 'By Warehouse', 'category' => 'By Category'] as $d => $lbl): ?>
+                <a class="wh-btn<?= $soSplit === $d ? ' active' : '' ?>" href="<?= e($soSplitQs($d)) ?>"><?= e($lbl) ?></a>
+                <?php endforeach; ?>
+            </div>
+            <table>
+                <thead><tr><th><?= $soSplit === 'category' ? 'Category' : 'Warehouse' ?></th><th class="num">Active SKUs</th><th class="num">Stockout SKUs</th><th class="num">Events</th><th class="num">Frequency</th></tr></thead>
+                <tbody>
+                <?php foreach ($stockoutSplit as $r): ?>
+                    <?php
+                        $a = (int) $r['active_skus'];
+                        $freq = $a > 0 ? (int) $r['stockout_skus'] / $a : null;
+                        $pill = $freq === null ? 'muted' : ($freq >= 0.10 ? 'bad' : ($freq >= 0.05 ? 'warn' : 'good'));
+                    ?>
+                    <tr>
+                        <td><?= e($r['grp']) ?></td>
+                        <td class="num"><?= num($r['active_skus']) ?></td>
+                        <td class="num"><?= num($r['stockout_skus']) ?></td>
+                        <td class="num"><?= num($r['events']) ?></td>
+                        <td class="num"><span class="pill <?= $pill ?>"><?= $freq !== null ? pct($freq, 1) : '—' ?></span></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if ($stockoutSplit === []): ?>
+                    <tr><td colspan="5" class="empty">No active SKUs match the current filters.</td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+    </section>
+
+    <?php if ($hasStockout && $stockoutRows !== []): ?>
+    <section class="panel panel-wide">
+        <h2>Stocked-Out SKUs</h2>
+        <p class="panel-note">Active SKUs that hit zero on-hand during the period, most stockout-days first &mdash; the reorder / expedite worklist. <strong>Min On Hand</strong> is the lowest observed on-hand in range.</p>
+        <div class="lpn-scroll">
+        <table>
+            <thead><tr><th>Material</th><th>Warehouse</th><th>Category</th><th class="num">Stockout Days</th><th class="num">Observed Days</th><th>Last Stockout</th><th class="num">Min On Hand</th></tr></thead>
+            <tbody>
+            <?php foreach ($stockoutRows as $r): ?>
+                <tr>
+                    <td><?= e($r['item_code']) ?><?php if ($r['item_description']): ?><span class="muted"> · <?= e($r['item_description']) ?></span><?php endif; ?></td>
+                    <td><?= e($r['warehouse']) ?></td>
+                    <td><?= e($r['category']) ?></td>
+                    <td class="num"><span class="pill bad"><?= num($r['stockout_days']) ?></span></td>
+                    <td class="num"><?= num($r['observed_days']) ?></td>
+                    <td><?= e($r['last_stockout']) ?: '<span class="muted">—</span>' ?></td>
+                    <td class="num"><?= $r['min_on_hand'] !== null ? num($r['min_on_hand']) : '—' ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        </div>
+    </section>
+    <?php endif; ?>
 
     <section class="panel panel-wide">
         <h2>Material Flow &mdash; Warehouse &rarr; Staging &rarr; Production &rarr; Waste</h2>
