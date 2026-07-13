@@ -29,7 +29,7 @@ SELECT
     TO_VARCHAR(I."U_STOCKUOM")                          AS unit_of_measure
 FROM "DAMASCUS_BAKERY"."@BMM_PNITEM" I
     INNER JOIN "DAMASCUS_BAKERY"."@BMM_PNMAST" M
-        ON M."U_RECORDID" = I."U_PNRECORDID"
+        ON M."DocEntry" = I."DocEntry"
 WHERE COALESCE(M."Canceled", 'N') <> 'Y'
   AND COALESCE(M."U_ENTRYDATE", M."CreateDate") >= ADD_MONTHS(CURRENT_DATE, -12)
   AND I."U_ITEMCODE" IS NOT NULL
