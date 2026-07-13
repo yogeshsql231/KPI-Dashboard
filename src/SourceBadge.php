@@ -66,6 +66,8 @@ final class SourceBadge
             'Supplier OTIF = purchase orders received on-time AND in-full ÷ total POs; received means goods-receipt-PO qty vs. ordered, on-time means last receipt on/before the promised date + 1 day grace. Whole-PO level: one bad line fails the PO. Cancelled POs excluded.'],
         'days_of_supply' => ['sap', 'OITW + OINM → inventory_supply',
             'Days of Supply = on-hand ÷ avg daily usage, where avg daily usage is the trailing 30-day outbound qty (OINM OutQty: deliveries, production issues, transfers out) ÷ 30. Per item × warehouse; inactive SKUs excluded; items with no recent usage reported separately.'],
+        'slow_inventory' => ['sap', 'OITW + OINM → inventory_supply',
+            'Slow/Obsolete % = stocked item-warehouses with no outbound movement (OINM OutQty) in the trailing 90 days ÷ stocked item-warehouses. Count-based (mixed UoMs prevent value totals without a cost source); inactive SKUs excluded. 90-day window is provisional.'],
     ];
 
     /** Render the standardized badge for a metric key. */

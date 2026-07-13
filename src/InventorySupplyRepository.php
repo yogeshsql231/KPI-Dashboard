@@ -107,6 +107,55 @@ final class InventorySupplyRepository
     }
 
     /**
+     * Slow/obsolete stock (SCRUM-91): stocked item-warehouses with no outbound
+     * movement in the trailing 90 days (PROVISIONAL window — pending Raj
+     * sign-off). Count-based share of stocked rows; a value-based ($) version
+     * needs a confirmed cost source.
+     *
+     * @return array{slow:int,stocked:int,slow_pct:?float}
+     */
+    public function slowSummary(?string $category, ?string $warehouse, ?string $item): array
+    {
+        [$where, $params] = $this->clause($category, $warehouse, $item);
+        $stmt = $this->pdo->prepare(
+            "SELECT
+                COALESCE(SUM(is_slow), 0)    AS slow,
+                COALESCE(SUM(is_stocked), 0) AS stocked
+             FROM vw_inventory_supply
+             WHERE $where"
+        );
+        $stmt->execute($params);
+        $row = $stmt->fetch() ?: [];
+        $slow = (int) ($row['slow'] ?? 0);
+        $stocked = (int) ($row['stocked'] ?? 0);
+        return [
+            'slow'     => $slow,
+            'stocked'  => $stocked,
+            'slow_pct' => $stocked > 0 ? round($slow / $stocked * 100, 2) : null,
+        ];
+    }
+
+    /**
+     * Slow item-warehouse rows, oldest movement first (never-moved rows first).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function slowRows(?string $category, ?string $warehouse, ?string $item, int $limit = 50): array
+    {
+        [$where, $params] = $this->clause($category, $warehouse, $item);
+        $stmt = $this->pdo->prepare(
+            "SELECT item_code, item_description, std_category, std_warehouse,
+                    on_hand, unit_of_measure, last_movement, is_new_item
+             FROM vw_inventory_supply
+             WHERE $where AND is_slow = 1
+             ORDER BY (last_movement IS NULL) DESC, last_movement ASC, on_hand DESC
+             LIMIT " . (int) $limit
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /**
      * Distinct categories / warehouses for the filter dropdowns.
      *
      * @return array<int, string>
