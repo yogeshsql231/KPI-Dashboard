@@ -64,6 +64,8 @@ final class SourceBadge
             'Alerts raised by the local audit engine over cached SAP data.'],
         'supplier_otif' => ['sap', 'OPOR/POR1 + OPDN/PDN1 → po_lines',
             'Supplier OTIF = purchase orders received on-time AND in-full ÷ total POs; received means goods-receipt-PO qty vs. ordered, on-time means last receipt on/before the promised date + 1 day grace. Whole-PO level: one bad line fails the PO. Cancelled POs excluded.'],
+        'days_of_supply' => ['sap', 'OITW + OINM → inventory_supply',
+            'Days of Supply = on-hand ÷ avg daily usage, where avg daily usage is the trailing 30-day outbound qty (OINM OutQty: deliveries, production issues, transfers out) ÷ 30. Per item × warehouse; inactive SKUs excluded; items with no recent usage reported separately.'],
     ];
 
     /** Render the standardized badge for a metric key. */
