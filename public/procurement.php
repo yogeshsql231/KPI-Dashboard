@@ -9,12 +9,17 @@ declare(strict_types=1);
  * measured at the whole-PO level (one bad line fails the PO), mirroring the
  * sales-side order OTIF (SCRUM-86). Reads the local `po_lines` cache refreshed
  * by etl/pull_po.php — never queries SAP directly.
+ *
+ * Inventory Days of Supply (SCRUM-92): how long current on-hand lasts at the
+ * trailing 30-day usage rate, per item x warehouse. Reads the local
+ * `inventory_supply` cache refreshed by etl/pull_inventory_supply.php.
  */
 
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/PoRepository.php';
+require_once __DIR__ . '/../src/InventorySupplyRepository.php';
 require_once __DIR__ . '/../src/SourceBadge.php';
 
 Auth::requireDepartment('procurement');
@@ -33,6 +38,15 @@ function num(mixed $v): string
         return '—';
     }
     return number_format((float) $v);
+}
+
+/** RAG class for a days-of-supply value (7 / 14-day thresholds). */
+function dosClass(?float $days): string
+{
+    if ($days === null) {
+        return 'neutral';
+    }
+    return $days >= 14 ? 'good' : ($days >= 7 ? 'warn' : 'bad');
 }
 
 /** RAG class for an OTIF %, matching the Overview thresholds. */
@@ -59,6 +73,10 @@ $warehouse = trim((string) ($_GET['warehouse'] ?? '')) ?: null;
 $from      = dateParam('from_date');
 $to        = dateParam('to_date');
 
+$invCategory  = trim((string) ($_GET['inv_category'] ?? '')) ?: null;
+$invWarehouse = trim((string) ($_GET['inv_warehouse'] ?? '')) ?: null;
+$invItem      = trim((string) ($_GET['inv_item'] ?? '')) ?: null;
+
 $error = null;
 $hasData = false;
 $otif = ['total_pos' => 0, 'otif_pos' => 0, 'otif_rate' => null];
@@ -67,6 +85,14 @@ $warehouses = [];
 $rows = [];
 $trend = [];
 $lastRefreshed = null;
+
+$invAvailable = false;
+$invHasData = false;
+$invSummary = ['critical' => 0, 'low' => 0, 'ok' => 0, 'healthy' => 0, 'stocked_out' => 0, 'no_usage' => 0, 'measured' => 0];
+$invRows = [];
+$invCategories = [];
+$invWarehouses = [];
+$invLastRefreshed = null;
 
 try {
     $repo = new PoRepository(Database::connection());
@@ -80,6 +106,19 @@ try {
 } catch (Throwable $ex) {
     $error = 'Purchase-order cache not available. Apply sql/migrations/018_po_lines.sql, then load with '
         . 'php etl/pull_po.php --source=PRIMSBM --query=etl/queries/prodhana_po.sql --via=PRODHANA';
+}
+
+try {
+    $invRepo = new InventorySupplyRepository(Database::connection());
+    $invHasData = $invRepo->hasData();
+    $invCategories = $invRepo->options('category');
+    $invWarehouses = $invRepo->options('warehouse');
+    $invSummary = $invRepo->summary($invCategory, $invWarehouse, $invItem);
+    $invRows = $invRepo->lowestSupply($invCategory, $invWarehouse, $invItem, 30);
+    $invLastRefreshed = $invRepo->lastRefreshed();
+    $invAvailable = true;
+} catch (Throwable $ex) {
+    $invAvailable = false;
 }
 
 $rate = $otif['otif_rate'];
@@ -143,6 +182,9 @@ $rate = $otif['otif_rate'];
                 <?php endforeach; ?>
             </select>
         </div>
+        <?php foreach (['inv_category' => $invCategory, 'inv_warehouse' => $invWarehouse, 'inv_item' => $invItem] as $hk => $hv): if ($hv !== null): ?>
+        <input type="hidden" name="<?= e($hk) ?>" value="<?= e($hv) ?>">
+        <?php endif; endforeach; ?>
         <div class="filter-actions">
             <button type="submit" class="btn btn-primary">Apply</button>
             <a class="btn btn-reset" href="procurement.php">Reset</a>
@@ -218,6 +260,96 @@ $rate = $otif['otif_rate'];
             </table>
         </section>
     </div>
+
+    <?php if ($invAvailable): ?>
+    <section class="panel" style="margin-top:24px;">
+        <h2>Inventory Days of Supply <?= SourceBadge::render('days_of_supply') ?></h2>
+        <p class="panel-note">How long current on-hand lasts at the trailing 30-day usage rate, per item &times; warehouse (active SKUs only). Provisional method pending sign-off: usage = 30-day outbound qty &divide; 30.<?= $invLastRefreshed ? ' Data refreshed ' . e($invLastRefreshed) . '.' : '' ?></p>
+
+        <?php if (!$invHasData): ?>
+        <div class="alert">
+            No inventory usage loaded yet. Apply sql/migrations/019_inventory_supply.sql, then on the XAMPP box run:
+            <code>php etl/pull_inventory_supply.php --source=PRIMSBM --query=etl/queries/prodhana_inventory_supply.sql --via=PRODHANA</code>
+        </div>
+        <?php else: ?>
+
+        <form class="filters" method="get" action="procurement.php">
+            <div class="filter">
+                <label for="inv_item">Item (code or name)</label>
+                <input type="text" id="inv_item" name="inv_item" value="<?= e($invItem ?? '') ?>" placeholder="Search SKU…">
+            </div>
+            <div class="filter">
+                <label for="inv_category">Category</label>
+                <select id="inv_category" name="inv_category">
+                    <option value="">All categories</option>
+                    <?php foreach ($invCategories as $c): ?>
+                    <option value="<?= e($c) ?>"<?= $c === $invCategory ? ' selected' : '' ?>><?= e($c) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="filter">
+                <label for="inv_warehouse">Warehouse</label>
+                <select id="inv_warehouse" name="inv_warehouse">
+                    <option value="">All warehouses</option>
+                    <?php foreach ($invWarehouses as $w): ?>
+                    <option value="<?= e($w) ?>"<?= $w === $invWarehouse ? ' selected' : '' ?>><?= e($w) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php foreach (['supplier' => $supplier, 'warehouse' => $warehouse, 'from_date' => $from, 'to_date' => $to] as $hk => $hv): if ($hv !== null): ?>
+            <input type="hidden" name="<?= e($hk) ?>" value="<?= e($hv) ?>">
+            <?php endif; endforeach; ?>
+            <div class="filter-actions">
+                <button type="submit" class="btn btn-primary">Apply</button>
+            </div>
+        </form>
+
+        <section class="cards">
+            <div class="card <?= $invSummary['critical'] > 0 ? 'bad' : 'good' ?>">
+                <div class="card-label">Below 7 days</div>
+                <div class="card-value"><?= num($invSummary['critical']) ?></div>
+                <div class="card-target">item-warehouses at critical supply (<?= num($invSummary['stocked_out']) ?> already at zero)</div>
+            </div>
+            <div class="card <?= $invSummary['low'] > 0 ? 'warn' : 'good' ?>">
+                <div class="card-label">7–14 days</div>
+                <div class="card-value"><?= num($invSummary['low']) ?></div>
+                <div class="card-target">item-warehouses running low</div>
+            </div>
+            <div class="card neutral">
+                <div class="card-label">14+ days</div>
+                <div class="card-value"><?= num($invSummary['ok'] + $invSummary['healthy']) ?></div>
+                <div class="card-target">item-warehouses adequately stocked</div>
+            </div>
+            <div class="card neutral">
+                <div class="card-label">No recent usage</div>
+                <div class="card-value"><?= num($invSummary['no_usage']) ?></div>
+                <div class="card-target">no outbound movement in 30 days — days of supply not measurable</div>
+            </div>
+        </section>
+
+        <p class="panel-note">Lowest supply first · <?= num($invSummary['measured']) ?> measurable item-warehouses match the filters.</p>
+        <table>
+            <thead><tr><th>Item</th><th>Category</th><th>Warehouse</th><th class="num">On hand</th><th class="num">Avg daily usage</th><th class="num">Days of supply</th></tr></thead>
+            <tbody>
+            <?php foreach ($invRows as $ir): ?>
+                <tr>
+                    <td><?= e($ir['item_code']) ?><?= $ir['item_description'] ? ' · ' . e($ir['item_description']) : '' ?><?= (int) $ir['is_new_item'] === 1 ? ' <span class="pill neutral">new SKU</span>' : '' ?></td>
+                    <td><?= e($ir['std_category']) ?></td>
+                    <td><?= e($ir['std_warehouse']) ?></td>
+                    <td class="num"><?= num($ir['on_hand']) ?><?= $ir['unit_of_measure'] ? ' ' . e($ir['unit_of_measure']) : '' ?></td>
+                    <td class="num"><?= e(number_format((float) $ir['avg_daily_usage'], 1)) ?></td>
+                    <td class="num"><span class="pill <?= dosClass((float) $ir['days_of_supply']) ?>"><?= e(number_format((float) $ir['days_of_supply'], 1)) ?>d</span></td>
+                </tr>
+            <?php endforeach; ?>
+            <?php if ($invRows === []): ?>
+                <tr><td colspan="6" class="empty">No items with measurable usage match the current filters.</td></tr>
+            <?php endif; ?>
+            </tbody>
+        </table>
+
+        <?php endif; ?>
+    </section>
+    <?php endif; ?>
 
     <?php endif; ?>
 </main>
