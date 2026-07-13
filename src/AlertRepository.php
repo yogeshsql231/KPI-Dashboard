@@ -101,6 +101,18 @@ final class AlertRepository
         if ($enabled('otif_below_target')) {
             $findings = array_merge($findings, $this->checkOtifBelowTarget($severity('otif_below_target', 'warning')));
         }
+        if ($enabled('item_missing_description')) {
+            $findings = array_merge($findings, $this->checkItemMissingDescription($severity('item_missing_description', 'warning')));
+        }
+        if ($enabled('item_unclassified')) {
+            $findings = array_merge($findings, $this->checkItemUnclassified($severity('item_unclassified', 'warning')));
+        }
+        if ($enabled('item_missing_packaging')) {
+            $findings = array_merge($findings, $this->checkItemMissingPackaging($severity('item_missing_packaging', 'warning')));
+        }
+        if ($enabled('item_master_stale')) {
+            $findings = array_merge($findings, $this->checkItemMasterStale($threshold('item_master_stale', 168), $severity('item_master_stale', 'warning')));
+        }
 
         return $findings;
     }
@@ -266,6 +278,136 @@ final class AlertRepository
             (int) $row['n']
         );
         return [$this->finding('otif_below_target', $severity, 'delivery', 'kpi', 'otif_30d', $msg, round($otif, 4))];
+    }
+
+    // -----------------------------------------------------------------------
+    // Item-master data quality (SCRUM-22)
+    // -----------------------------------------------------------------------
+
+    /** @return array<int, array<string, mixed>> */
+    private function checkItemMissingDescription(string $severity): array
+    {
+        if (!$this->tableExists('warehouse_stock')) {
+            return [];
+        }
+        $rows = $this->pdo->query(
+            "SELECT DISTINCT item_code FROM warehouse_stock
+             WHERE item_code IS NOT NULL AND item_code <> ''
+               AND (item_description IS NULL OR TRIM(item_description) = '')
+             ORDER BY item_code"
+        )->fetchAll(PDO::FETCH_COLUMN);
+        if ($rows === []) {
+            return [];
+        }
+        $msg = sprintf(
+            '%d stocked item%s with no description in the item master: %s.',
+            count($rows),
+            count($rows) === 1 ? '' : 's',
+            $this->sampleList($rows)
+        );
+        return [$this->finding('item_missing_description', $severity, 'data', 'item', 'item_missing_description', $msg, count($rows))];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function checkItemUnclassified(string $severity): array
+    {
+        if (!$this->tableExists('warehouse_stock') || !$this->columnExists('warehouse_stock', 'product_type')) {
+            return [];
+        }
+        $rows = $this->pdo->query(
+            "SELECT DISTINCT item_code FROM warehouse_stock
+             WHERE item_code IS NOT NULL AND item_code <> ''
+               AND (product_type IS NULL OR TRIM(product_type) = ''
+                    OR category IS NULL OR TRIM(category) = '')
+             ORDER BY item_code"
+        )->fetchAll(PDO::FETCH_COLUMN);
+        if ($rows === []) {
+            return [];
+        }
+        $msg = sprintf(
+            '%d stocked item%s missing product type or category (shown as Unassigned): %s.',
+            count($rows),
+            count($rows) === 1 ? '' : 's',
+            $this->sampleList($rows)
+        );
+        return [$this->finding('item_unclassified', $severity, 'data', 'item', 'item_unclassified', $msg, count($rows))];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function checkItemMissingPackaging(string $severity): array
+    {
+        if (!$this->tableExists('warehouse_stock')) {
+            return [];
+        }
+        // An item is convertible when any tier of the shared pallet-conversion
+        // precedence applies: stored pallets -> material_packaging conversion
+        // -> warehouse_capacity default (see WarehouseInventoryRepository).
+        $mpJoin = $this->tableExists('material_packaging')
+            ? 'LEFT JOIN material_packaging mp ON mp.item_code = s.item_code'
+            : 'LEFT JOIN (SELECT NULL AS item_code, NULL AS units_per_case,
+                                 NULL AS cases_per_pallet, NULL AS units_per_pallet) mp
+                    ON mp.item_code = s.item_code';
+        $wcJoin = '';
+        $wcCond = '';
+        if ($this->tableExists('warehouse_capacity')) {
+            $wcJoin = 'LEFT JOIN warehouse_capacity wc ON wc.warehouse = s.warehouse';
+            $wcCond = 'AND NULLIF(wc.cases_per_pallet, 0) IS NULL';
+        }
+        $rows = $this->pdo->query(
+            "SELECT DISTINCT s.item_code
+             FROM warehouse_stock s $mpJoin $wcJoin
+             WHERE s.item_code IS NOT NULL AND s.item_code <> ''
+               AND s.pallets IS NULL
+               AND NULLIF(mp.units_per_pallet, 0) IS NULL
+               AND NULLIF(mp.units_per_case * mp.cases_per_pallet, 0) IS NULL
+               $wcCond
+             ORDER BY s.item_code"
+        )->fetchAll(PDO::FETCH_COLUMN);
+        if ($rows === []) {
+            return [];
+        }
+        $msg = sprintf(
+            '%d stocked item%s with no pallet-conversion data on any path (pallet KPIs show "—"): %s.',
+            count($rows),
+            count($rows) === 1 ? '' : 's',
+            $this->sampleList($rows)
+        );
+        return [$this->finding('item_missing_packaging', $severity, 'data', 'item', 'item_missing_packaging', $msg, count($rows))];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function checkItemMasterStale(float $hours, string $severity): array
+    {
+        if (!$this->tableExists('warehouse_stock')) {
+            return [];
+        }
+        $count = (int) $this->pdo->query('SELECT COUNT(*) FROM warehouse_stock')->fetchColumn();
+        if ($count === 0) {
+            return [];
+        }
+        $latest = $this->pdo->query('SELECT MAX(refreshed_at) FROM warehouse_stock')->fetchColumn();
+        if (!$latest) {
+            return [];
+        }
+        $ageHours = (time() - strtotime((string) $latest)) / 3600;
+        if ($ageHours <= $hours) {
+            return [];
+        }
+        $msg = sprintf(
+            'Item master / stock cache last refreshed %.1f h ago (threshold %s h). Re-run etl/pull_inventory.php --what=stock.',
+            $ageHours,
+            $this->trimNum($hours)
+        );
+        return [$this->finding('item_master_stale', $severity, 'data', 'etl', 'warehouse_stock', $msg, round($ageHours, 1))];
+    }
+
+    /** Comma list of the first few codes, with an ellipsis count for the rest. */
+    private function sampleList(array $codes, int $max = 5): string
+    {
+        $sample = array_slice($codes, 0, $max);
+        $s = implode(', ', $sample);
+        $rest = count($codes) - count($sample);
+        return $rest > 0 ? $s . sprintf(' (+%d more)', $rest) : $s;
     }
 
     // -----------------------------------------------------------------------
@@ -496,6 +638,21 @@ final class AlertRepository
         $f = (float) $v;
         $s = rtrim(rtrim(number_format($f, 4, '.', ''), '0'), '.');
         return $s === '' ? '0' : $s;
+    }
+
+    /** Whether a column exists on a table in the current schema. */
+    private function columnExists(string $table, string $column): bool
+    {
+        $key = $table . '.' . $column;
+        if (array_key_exists($key, $this->existsCache)) {
+            return $this->existsCache[$key];
+        }
+        $stmt = $this->pdo->prepare(
+            'SELECT COUNT(*) FROM information_schema.columns
+             WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?'
+        );
+        $stmt->execute([$table, $column]);
+        return $this->existsCache[$key] = ((int) $stmt->fetchColumn() > 0);
     }
 
     /** Whether a base table or view exists in the current schema (memoised). */
