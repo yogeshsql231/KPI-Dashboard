@@ -72,6 +72,7 @@ $invSummary = ['warehouses' => 0, 'materials' => 0, 'on_hand_pallets' => 0.0, 'a
 $hasStock = false;
 $hasStockSplit = false;
 $stockSplitRows = [];
+$invSummaryRows = [];
 $splitDim = isset($_GET['split']) && in_array($_GET['split'], ['location', 'type', 'category'], true)
     ? (string) $_GET['split'] : 'location';
 $hasBatches = false;
@@ -115,6 +116,7 @@ try {
     $hasStockSplit = $hasStock && $inv->hasStockClassification();
     if ($hasStockSplit) {
         $stockSplitRows = $inv->stockSplit($filters, $splitDim);
+        $invSummaryRows = $inv->inventorySummary($filters);
     }
     $packagingRows = $inv->packagingRows($filters);
     $agedByWarehouse = $inv->agedByWarehouse($filters);
@@ -409,6 +411,57 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
                 <?php endif; ?>
                 </tbody>
             </table>
+        <?php endif; ?>
+    </section>
+
+    <section class="panel panel-wide">
+        <h2>Inventory Summary &mdash; Department &times; Location &times; Pallets</h2>
+        <p class="panel-note">On-hand inventory rolled up by department (SAP item group) and warehouse location with distinct item and pallet counts. Use the Item search above to drill into specific materials. Departments come from the stock classification (migration <code>013</code>); unclassified stock shows as &ldquo;Unassigned&rdquo;.</p>
+        <?php if (!$hasStockSplit): ?>
+            <p class="empty">Not available yet. Run migration <code>013_stock_classification.sql</code>, then reload stock with <code>php etl/pull_inventory.php --what=stock --source=PRIMSBM</code>.</p>
+        <?php else: ?>
+            <?php
+                // Department subtotals for the rollup rows.
+                $deptTotals = [];
+                foreach ($invSummaryRows as $r) {
+                    $d = (string) $r['department'];
+                    if (!isset($deptTotals[$d])) {
+                        $deptTotals[$d] = ['items' => 0, 'on_hand' => 0.0, 'pallets' => 0.0, 'locations' => 0];
+                    }
+                    $deptTotals[$d]['items'] += (int) $r['items'];
+                    $deptTotals[$d]['on_hand'] += (float) $r['on_hand'];
+                    $deptTotals[$d]['pallets'] += (float) $r['pallets'];
+                    $deptTotals[$d]['locations']++;
+                }
+            ?>
+            <div class="lpn-scroll">
+            <table>
+                <thead><tr><th>Department</th><th>Location</th><th class="num">Items</th><th class="num">On Hand</th><th class="num">Pallets</th></tr></thead>
+                <tbody>
+                <?php $prevDept = null; foreach ($invSummaryRows as $r): ?>
+                    <?php if ($r['department'] !== $prevDept): $prevDept = $r['department']; $t = $deptTotals[(string) $r['department']]; ?>
+                    <tr style="font-weight:600;background:rgba(0,0,0,.04)">
+                        <td><?= e($r['department']) ?></td>
+                        <td><span class="muted"><?= num($t['locations']) ?> location<?= $t['locations'] === 1 ? '' : 's' ?></span></td>
+                        <td class="num"><?= num($t['items']) ?></td>
+                        <td class="num"><?= num($t['on_hand']) ?></td>
+                        <td class="num"><?= pallets($t['pallets']) ?></td>
+                    </tr>
+                    <?php endif; ?>
+                    <tr>
+                        <td></td>
+                        <td><?= e($r['warehouse']) ?></td>
+                        <td class="num"><?= num($r['items']) ?></td>
+                        <td class="num"><?= num($r['on_hand']) ?></td>
+                        <td class="num"><?= pallets($r['pallets']) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if ($invSummaryRows === []): ?>
+                    <tr><td colspan="5" class="empty">No stock matches the current filters.</td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
+            </div>
         <?php endif; ?>
     </section>
 

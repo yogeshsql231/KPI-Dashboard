@@ -230,6 +230,39 @@ final class WarehouseInventoryRepository
         return $stmt->fetchAll();
     }
 
+    // ---- Inventory summary (SCRUM-29) ---------------------------------------
+
+    /**
+     * Inventory rolled up by department (SAP item group) x warehouse location,
+     * with distinct item and pallet counts. Departments come from the stock
+     * classification (migration 013); unclassified stock groups under
+     * "Unassigned".
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function inventorySummary(DeliveryFilters $f): array
+    {
+        if (!$this->hasStock() || !$this->hasStockClassification()) {
+            return [];
+        }
+        [$where, $params] = $this->whItemClause($f, 's.warehouse', 's.');
+        $palletExpr = $this->palletExpr('s.on_hand', 's.pallets');
+        $joins = $this->palletJoins('s.item_code', 's.warehouse');
+        $stmt = $this->pdo->prepare(
+            "SELECT s.std_category AS department,
+                    s.warehouse,
+                    COUNT(DISTINCT s.item_code)   AS items,
+                    COALESCE(SUM(s.on_hand), 0)   AS on_hand,
+                    COALESCE(SUM($palletExpr), 0) AS pallets
+             FROM vw_warehouse_stock s $joins
+             WHERE $where
+             GROUP BY s.std_category, s.warehouse
+             ORDER BY s.std_category, pallets DESC, s.warehouse"
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
     // ---- Packaging ---------------------------------------------------------
 
     /** @return array<int,array<string,mixed>> */
