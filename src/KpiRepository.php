@@ -59,6 +59,38 @@ final class KpiRepository
         return $row;
     }
 
+    /**
+     * Order-level OTIF: an order counts as on-time-in-full only when every
+     * one of its shipment lines is flagged OTIF. Orders are keyed by the SAP
+     * SO id when present, falling back to the PO number.
+     *
+     * @return array{total_orders: int, otif_orders: int, otif_rate: ?float}
+     */
+    public function otifOrders(Filters $f): array
+    {
+        [$where, $params] = $f->shipmentClause();
+        $stmt = $this->pdo->prepare(
+            "SELECT COUNT(*) AS total_orders, COALESCE(SUM(all_otif), 0) AS otif_orders
+             FROM (
+                SELECT
+                    COALESCE(NULLIF(so_docentry, ''), po_number) AS order_key,
+                    MIN(otif_flag)                               AS all_otif
+                FROM vw_order_shipment_kpi
+                WHERE $where
+                GROUP BY COALESCE(NULLIF(so_docentry, ''), po_number)
+             ) o"
+        );
+        $stmt->execute($params);
+        $r = $stmt->fetch() ?: [];
+        $total = (int) ($r['total_orders'] ?? 0);
+        $otif = (int) ($r['otif_orders'] ?? 0);
+        return [
+            'total_orders' => $total,
+            'otif_orders'  => $otif,
+            'otif_rate'    => $total > 0 ? $otif / $total : null,
+        ];
+    }
+
     /** @return array<string, float> metric_key => target_value */
     public function targets(): array
     {

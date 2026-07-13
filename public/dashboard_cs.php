@@ -54,6 +54,7 @@ $pareto = [];
 $orderStatus = [];
 $demographics = [];
 $warehouseOptions = [];
+$otifOrders = null;
 $filters = Filters::fromRequest($_GET);
 
 try {
@@ -67,6 +68,11 @@ try {
     $orderStatus = $repo->orderStatusTracking($filters);
     $demographics = $repo->customerDemographics($filters);
     $warehouseOptions = $repo->warehouseOptions();
+    try {
+        $otifOrders = $repo->otifOrders($filters);
+    } catch (Throwable $ex) {
+        $otifOrders = null; // migration 011 (so_docentry on the view) not applied yet
+    }
 } catch (Throwable $ex) {
     $error = 'Unable to load KPI data. Check the database connection in your .env file.';
 }
@@ -165,6 +171,15 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
             <div class="card-value"><?= pct($otif) ?></div>
             <div class="card-target">Target <?= pct((float) $otifTarget, 0) ?></div>
         </div>
+
+        <?php if ($otifOrders !== null && $otifOrders['total_orders'] > 0): ?>
+        <?php $c = ratioClass($otifOrders['otif_rate'], (float) $otifTarget); ?>
+        <div class="card <?= $c ?>">
+            <div class="card-label">OTIF by Order</div>
+            <div class="card-value"><?= pct($otifOrders['otif_rate']) ?></div>
+            <div class="card-target"><?= num($otifOrders['otif_orders']) ?> of <?= num($otifOrders['total_orders']) ?> orders · target <?= pct((float) $otifTarget, 0) ?></div>
+        </div>
+        <?php endif; ?>
 
         <?php $c = ratioClass($ifr, (float) $ifrTarget); ?>
         <div class="card <?= $c ?>">

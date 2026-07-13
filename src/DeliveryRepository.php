@@ -393,6 +393,73 @@ final class DeliveryRepository
     }
 
     /**
+     * Order-level OTIF: a sales order counts as on-time-in-full only when
+     * every one of its lines carries otif_flag = 1 (cancelled / flag-less
+     * lines are excluded from the check via otif_flag IS NOT NULL).
+     *
+     * @return array{total_orders: int, otif_orders: int, otif_rate: ?float}
+     */
+    public function otifOrders(DeliveryFilters $f): array
+    {
+        [$where, $params] = $f->clause();
+        $stmt = $this->pdo->prepare(
+            "SELECT COUNT(*) AS total_orders, COALESCE(SUM(all_otif), 0) AS otif_orders
+             FROM (
+                SELECT sales_order, MIN(otif_flag) AS all_otif
+                FROM vw_delivery_lines
+                WHERE $where AND otif_flag IS NOT NULL
+                GROUP BY sales_order
+             ) o"
+        );
+        $stmt->execute($params);
+        $r = $stmt->fetch() ?: [];
+        $total = (int) ($r['total_orders'] ?? 0);
+        $otif = (int) ($r['otif_orders'] ?? 0);
+        return [
+            'total_orders' => $total,
+            'otif_orders'  => $otif,
+            'otif_rate'    => $total > 0 ? $otif / $total : null,
+        ];
+    }
+
+    /**
+     * Weekly order-level OTIF % over a rolling window. Like weeklyTrend, the
+     * date-range filter is dropped so the sparkline always shows the recent
+     * trend while the other filters still apply.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function otifWeeklyTrend(DeliveryFilters $f, int $weeks = 8): array
+    {
+        [$where, $params] = $f->clauseExcept('date');
+        $days = max(1, (int) $weeks) * 7;
+        $stmt = $this->pdo->prepare(
+            "SELECT
+                o.yw                                 AS yw,
+                MIN(o.week_start)                    AS week_start,
+                COUNT(*)                             AS orders,
+                COALESCE(AVG(o.all_otif), 0)         AS otif_rate
+             FROM (
+                SELECT
+                    sales_order,
+                    YEARWEEK(posting_date, 3) AS yw,
+                    MIN(posting_date)         AS week_start,
+                    MIN(otif_flag)            AS all_otif
+                FROM vw_delivery_lines
+                WHERE $where
+                  AND otif_flag IS NOT NULL
+                  AND posting_date IS NOT NULL
+                  AND posting_date >= DATE_SUB(CURDATE(), INTERVAL $days DAY)
+                GROUP BY sales_order, YEARWEEK(posting_date, 3)
+             ) o
+             GROUP BY o.yw
+             ORDER BY o.yw"
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /**
      * Monthly order performance (orders, $, delivered qty) for the Overview's
      * sales-performance and growth charts.
      *

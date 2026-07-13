@@ -79,6 +79,8 @@ $lpnSummary = null;
 $hasLpn = false;
 $whOptions = [];
 $lastRefreshed = null;
+$otif = ['total_orders' => 0, 'otif_orders' => 0, 'otif_rate' => null];
+$otifTrend = [];
 
 $filters = DeliveryFilters::fromRequest($_GET);
 // Filter hierarchy: warehouse only unlocks after a date range is chosen.
@@ -93,6 +95,8 @@ try {
 
     $ov = $repo->overview($filters);
     $trend = $repo->weeklyTrend($filters, 8);
+    $otif = $repo->otifOrders($filters);
+    $otifTrend = $repo->otifWeeklyTrend($filters, 8);
     $monthly = $repo->monthlyPerformance($filters);
     $topCust = $repo->customersByOrders($filters, 5);
     $divisionRows = $repo->byDivisionCustomer($filters);
@@ -175,7 +179,28 @@ foreach ($palletTrend as $r) {
 ksort($tOnHand);
 $tOnHand = array_values($tOnHand);
 
+// OTIF tile: RAG status color (green >= 95%, gold >= 85%, red below).
+$otifRate = $otif['otif_rate'];
+$tOtif = [];
+foreach ($otifTrend as $r) {
+    $tOtif[] = round((float) $r['otif_rate'] * 100, 1);
+}
+$otifColor = 'var(--ov-dim)';
+if ($otifRate !== null) {
+    $otifColor = $otifRate >= 0.95 ? 'var(--ov-green)' : ($otifRate >= 0.85 ? 'var(--ov-gold)' : 'var(--ov-red)');
+}
+
 $tiles = [
+    [
+        'label' => 'OTIF',
+        'value' => $otifRate === null ? '—' : number_format($otifRate * 100, 1) . '%',
+        'sub'   => $otif['total_orders'] > 0
+            ? num($otif['otif_orders']) . ' of ' . num($otif['total_orders']) . ' orders on-time in-full'
+            : 'no eligible orders in range',
+        'delta' => deltaPct($tOtif),
+        'spark' => $tOtif,
+        'color' => $otifColor,
+    ],
     [
         'label' => 'Pallets on hand',
         'value' => $lpnSummary !== null ? num($lpnSummary['pallets'] ?? 0) : '—',
@@ -407,7 +432,7 @@ $chartData = [
 
     <div class="sec" data-id="orders">
         <div class="handle" draggable="true"><span class="grip">⠿</span><span>Pallets &amp; Orders</span></div>
-        <div class="g4">
+        <div class="g5">
             <?php foreach ($tiles as $t): ?>
             <div class="ovcard tile">
                 <div class="top">
