@@ -55,6 +55,7 @@ $orderStatus = [];
 $demographics = [];
 $warehouseOptions = [];
 $otifOrders = null;
+$cycleOrders = null;
 $filters = Filters::fromRequest($_GET);
 
 try {
@@ -70,8 +71,10 @@ try {
     $warehouseOptions = $repo->warehouseOptions();
     try {
         $otifOrders = $repo->otifOrders($filters);
+        $cycleOrders = $repo->cycleTimeOrders($filters);
     } catch (Throwable $ex) {
         $otifOrders = null; // migration 011 (so_docentry on the view) not applied yet
+        $cycleOrders = null;
     }
 } catch (Throwable $ex) {
     $error = 'Unable to load KPI data. Check the database connection in your .env file.';
@@ -199,6 +202,14 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
             <div class="card-value"><?= $summary['avg_lead_time_days'] !== null ? number_format((float) $summary['avg_lead_time_days'], 1) : '—' ?></div>
             <div class="card-target">days (order → ship)</div>
         </div>
+
+        <?php if ($cycleOrders !== null && $cycleOrders['orders'] > 0): ?>
+        <div class="card neutral">
+            <div class="card-label">Order Cycle Time</div>
+            <div class="card-value"><?= $cycleOrders['avg_days'] !== null ? number_format((float) $cycleOrders['avg_days'], 1) : '—' ?></div>
+            <div class="card-target">days · <?= num($cycleOrders['orders']) ?> shipped orders</div>
+        </div>
+        <?php endif; ?>
 
         <div class="card neutral">
             <div class="card-label">Customer Complaints</div>
