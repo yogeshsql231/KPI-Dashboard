@@ -70,6 +70,8 @@ $paySummary = [];
 $lateDelMonths = [];
 $latePayMonths = [];
 $hasPayments = false;
+$arAging = [];
+$topOpenAr = [];
 $complaintSummary = ['complaints' => 0, 'lost_amount' => 0];
 $complaintsByReason = [];
 $palletRows = [];
@@ -118,6 +120,8 @@ try {
     $latePayers = $payments->topLatePayers($filters->fromDate, $filters->toDate, 0, 5);
     $lateDelMonths = $repo->lateByMonth($filters);
     $latePayMonths = $payments->byMonth($filters->fromDate, $filters->toDate, 0);
+    $arAging = $payments->arAging();
+    $topOpenAr = $payments->topOpenAr(5);
 
     try {
         $hasLpn = $lpn->hasData();
@@ -546,6 +550,59 @@ $chartData = [
                     <?php endforeach; ?>
                     <?php if ($latePayers === []): ?>
                         <p class="ovempty"><?= $hasPayments ? 'No late payments in the selected range.' : 'Late-payment $ populate once the A/R payment ETL loads ar_payments (migration 006 + etl/pull_payments.php).' ?></p>
+                    <?php endif; ?>
+                <?php else: ?>
+                    <p class="ovempty">Restricted to C-level users.</p>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+
+    <div class="sec" data-id="araging">
+        <div class="handle" draggable="true"><span class="grip">⚠</span><span>A/R Aging (open invoices)</span></div>
+        <div class="g2">
+            <div class="ovcard">
+                <div class="eyebrow">⏳ A/R aging — open invoices by days past due (as of today) <?= SourceBadge::render('invoiced') ?></div>
+                <?php
+                $agingTotalInv = 0;
+                $agingTotalAmt = 0.0;
+                $agingMax = 0.0;
+                foreach ($arAging as $b) {
+                    $agingTotalInv += (int) $b['invoices'];
+                    $agingTotalAmt += (float) $b['open_amount'];
+                    $agingMax = max($agingMax, $canSeeFinancials ? (float) $b['open_amount'] : (float) $b['invoices']);
+                }
+                ?>
+                <?php if ($agingTotalInv > 0): ?>
+                    <?php foreach ($arAging as $label => $b):
+                        $v = $canSeeFinancials ? (float) $b['open_amount'] : (float) $b['invoices'];
+                        $w = $agingMax > 0 ? round($v / $agingMax * 100) : 0;
+                    ?>
+                    <div class="row">
+                        <span class="nm"><?= e($label) ?><?= $label === 'Current' ? ' (not yet due)' : 'd past due' ?></span>
+                        <div class="track"><div class="fill" style="width:<?= $w ?>%"></div></div>
+                        <span class="amt"><?= (int) $b['invoices'] ?> inv<?= $canSeeFinancials ? ' · ' . e(moneyShort((float) $b['open_amount'])) : '' ?></span>
+                    </div>
+                    <?php endforeach; ?>
+                    <p class="phint">Total open A/R: <?= $agingTotalInv ?> invoices<?= $canSeeFinancials ? ' · ' . e(moneyShort($agingTotalAmt)) : '' ?> · snapshot as of today, independent of the date filter</p>
+                <?php else: ?>
+                    <p class="ovempty"><?= $hasPayments ? 'No open (unpaid) invoices in the A/R cache.' : 'Populates once the A/R payment ETL loads ar_payments (migration 006 + etl/pull_payments.php).' ?></p>
+                <?php endif; ?>
+            </div>
+            <div class="ovcard lp">
+                <div class="eyebrow">🏦 Top open A/R balances <?= SourceBadge::render('invoiced') ?></div>
+                <?php if ($canSeeFinancials): ?>
+                    <?php foreach ($topOpenAr as $p): ?>
+                    <div class="row">
+                        <span><?= e($p['customer']) ?></span>
+                        <span>
+                            <span class="d"><?= (int) $p['oldest_days_past_due'] > 0 ? (int) $p['oldest_days_past_due'] . 'd past due' : 'current' ?></span>
+                            <span class="a"><?= e(moneyShort((float) $p['open_amount'])) ?></span>
+                        </span>
+                    </div>
+                    <?php endforeach; ?>
+                    <?php if ($topOpenAr === []): ?>
+                        <p class="ovempty">No open invoices — nothing owed.</p>
                     <?php endif; ?>
                 <?php else: ?>
                     <p class="ovempty">Restricted to C-level users.</p>
