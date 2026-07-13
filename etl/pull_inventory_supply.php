@@ -14,7 +14,8 @@ declare(strict_types=1);
  *
  * The source query must return these output columns:
  *   source_key, item_code, item_description, category, warehouse, on_hand,
- *   usage_qty_30d, usage_qty_90d, is_active, item_created, unit_of_measure
+ *   usage_qty_30d, usage_qty_90d, last_movement, is_active, item_created,
+ *   unit_of_measure
  *
  * Idempotent: rows are upserted on (source_system, source_key). READ-ONLY on
  * the source.
@@ -75,7 +76,7 @@ if ($printSql) {
 /** Text columns copied through verbatim (nullified when empty). */
 $textCols = ['item_code', 'item_description', 'category', 'warehouse', 'unit_of_measure'];
 /** Date columns normalised to YYYY-MM-DD. */
-$dateCols = ['item_created'];
+$dateCols = ['item_created', 'last_movement'];
 /** Numeric columns. */
 $numCols = ['on_hand', 'usage_qty_30d', 'usage_qty_90d'];
 /** Integer flag columns. */

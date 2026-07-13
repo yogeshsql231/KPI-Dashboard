@@ -13,6 +13,10 @@ declare(strict_types=1);
  * Inventory Days of Supply (SCRUM-92): how long current on-hand lasts at the
  * trailing 30-day usage rate, per item x warehouse. Reads the local
  * `inventory_supply` cache refreshed by etl/pull_inventory_supply.php.
+ *
+ * Slow/Obsolete Inventory % (SCRUM-91): share of stocked item-warehouses with
+ * no outbound movement in the trailing 90 days (provisional window). Reads
+ * the same cache; shares the inv_* filters with the days-of-supply panel.
  */
 
 require_once __DIR__ . '/../config/config.php';
@@ -90,6 +94,9 @@ $invAvailable = false;
 $invHasData = false;
 $invSummary = ['critical' => 0, 'low' => 0, 'ok' => 0, 'healthy' => 0, 'stocked_out' => 0, 'no_usage' => 0, 'measured' => 0];
 $invRows = [];
+$slowSummary = ['slow' => 0, 'stocked' => 0, 'slow_pct' => null];
+$slowRows = [];
+$slowAvailable = false;
 $invCategories = [];
 $invWarehouses = [];
 $invLastRefreshed = null;
@@ -119,6 +126,16 @@ try {
     $invAvailable = true;
 } catch (Throwable $ex) {
     $invAvailable = false;
+}
+
+try {
+    if ($invAvailable) {
+        $slowSummary = $invRepo->slowSummary($invCategory, $invWarehouse, $invItem);
+        $slowRows = $invRepo->slowRows($invCategory, $invWarehouse, $invItem, 30);
+        $slowAvailable = true;
+    }
+} catch (Throwable $ex) {
+    $slowAvailable = false;
 }
 
 $rate = $otif['otif_rate'];
@@ -349,6 +366,59 @@ $rate = $otif['otif_rate'];
 
         <?php endif; ?>
     </section>
+
+    <?php if ($slowAvailable): ?>
+    <section class="panel" style="margin-top:24px;">
+        <h2>Slow / Obsolete Inventory <?= SourceBadge::render('slow_inventory') ?></h2>
+        <p class="panel-note">Stocked item &times; warehouse combinations with no outbound movement in the trailing 90 days (active SKUs only). Provisional 90-day window pending sign-off; perishables may need a shorter cutoff. Count-based &mdash; a value-based ($) view needs a confirmed cost source. Uses the same filters as Days of Supply above.<?= $invLastRefreshed ? ' Data refreshed ' . e($invLastRefreshed) . '.' : '' ?></p>
+
+        <?php if (!$invHasData): ?>
+        <div class="alert">
+            No inventory usage loaded yet. Apply sql/migrations/020_slow_inventory.sql, then on the XAMPP box run:
+            <code>php etl/pull_inventory_supply.php --source=PRIMSBM --query=etl/queries/prodhana_inventory_supply.sql --via=PRODHANA</code>
+        </div>
+        <?php else: ?>
+
+        <section class="cards">
+            <div class="card <?= $slowSummary['slow_pct'] === null ? 'neutral' : ($slowSummary['slow_pct'] > 10 ? 'bad' : ($slowSummary['slow_pct'] > 5 ? 'warn' : 'good')) ?>">
+                <div class="card-label">Slow / obsolete %</div>
+                <div class="card-value"><?= $slowSummary['slow_pct'] === null ? '—' : e(number_format($slowSummary['slow_pct'], 1)) . '%' ?></div>
+                <div class="card-target">of stocked item-warehouses had no movement in 90 days</div>
+            </div>
+            <div class="card <?= $slowSummary['slow'] > 0 ? 'warn' : 'good' ?>">
+                <div class="card-label">Slow item-warehouses</div>
+                <div class="card-value"><?= num($slowSummary['slow']) ?></div>
+                <div class="card-target">stocked with zero outbound movement in 90 days</div>
+            </div>
+            <div class="card neutral">
+                <div class="card-label">Stocked item-warehouses</div>
+                <div class="card-value"><?= num($slowSummary['stocked']) ?></div>
+                <div class="card-target">active SKUs with on-hand &gt; 0 matching the filters</div>
+            </div>
+        </section>
+
+        <p class="panel-note">Oldest movement first &middot; <?= num(count($slowRows)) ?> slow item-warehouses shown.</p>
+        <table>
+            <thead><tr><th>Item</th><th>Category</th><th>Warehouse</th><th class="num">On hand</th><th>Last movement</th></tr></thead>
+            <tbody>
+            <?php foreach ($slowRows as $sr): ?>
+                <tr>
+                    <td><?= e($sr['item_code']) ?><?= $sr['item_description'] ? ' &middot; ' . e($sr['item_description']) : '' ?><?= (int) $sr['is_new_item'] === 1 ? ' <span class="pill neutral">new SKU</span>' : '' ?></td>
+                    <td><?= e($sr['std_category']) ?></td>
+                    <td><?= e($sr['std_warehouse']) ?></td>
+                    <td class="num"><?= num($sr['on_hand']) ?><?= $sr['unit_of_measure'] ? ' ' . e($sr['unit_of_measure']) : '' ?></td>
+                    <td><?= $sr['last_movement'] ? e($sr['last_movement']) : '<span class="pill neutral">never moved</span>' ?></td>
+                </tr>
+            <?php endforeach; ?>
+            <?php if ($slowRows === []): ?>
+                <tr><td colspan="5" class="empty">No slow stock matches the current filters.</td></tr>
+            <?php endif; ?>
+            </tbody>
+        </table>
+
+        <?php endif; ?>
+    </section>
+    <?php endif; ?>
     <?php endif; ?>
 
     <?php endif; ?>

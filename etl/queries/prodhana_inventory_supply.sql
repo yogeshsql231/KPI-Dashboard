@@ -1,10 +1,11 @@
 -- ===========================================================================
 -- PRODHANA (SAP Business One on HANA) -> inventory_supply source query.
 --
--- Inventory Days of Supply (SCRUM-92): one row per active inventory item x
--- warehouse with current on-hand (OITW) and trailing 30/90-day outbound usage
--- from the inventory journal (OINM.OutQty — covers deliveries, issues to
--- production, transfers out, etc.).
+-- Inventory Days of Supply (SCRUM-92) + Slow/Obsolete Inventory (SCRUM-91):
+-- one row per active inventory item x warehouse with current on-hand (OITW),
+-- trailing 30/90-day outbound usage and last outbound movement date from the
+-- inventory journal (OINM.OutQty — covers deliveries, issues to production,
+-- transfers out, etc.).
 --
 -- Run through the PRODHANA linked-server bridge (same as prodhana_po.sql):
 --   php etl/pull_inventory_supply.php --source=PRIMSBM \
@@ -33,6 +34,11 @@ SELECT
        AND M."Warehouse" = W."WhsCode"
        AND M."OutQty" > 0
        AND M."DocDate" >= ADD_DAYS(CURRENT_DATE, -90)), 0) AS usage_qty_90d,
+    (SELECT MAX(M."DocDate")
+     FROM "DAMASCUS_BAKERY"."OINM" M
+     WHERE M."ItemCode" = W."ItemCode"
+       AND M."Warehouse" = W."WhsCode"
+       AND M."OutQty" > 0)                              AS last_movement,
     CASE
         WHEN I."validFor" = 'N' OR I."frozenFor" = 'Y' THEN 0
         ELSE 1

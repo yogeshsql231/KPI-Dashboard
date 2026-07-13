@@ -105,6 +105,12 @@ description: Test the KPI Dashboard PHP pages (Overview, Delivery, Warehouse, Cu
 - Inv filters use `inv_category` / `inv_warehouse` / `inv_item` GET params; the two filter forms carry each other's values as hidden inputs — applying one must not reset the other.
 - Source is SAP B1 `OITW` on-hand + `OINM.OutQty` trailing usage via `etl/pull_inventory_supply.php --via=PRODHANA`; the 30-day usage window is provisional pending Raj's sign-off.
 
+## Slow/Obsolete Inventory % (SCRUM-91) specifics
+- Requires migration 020 (adds `last_movement` to `inventory_supply`, view gains `is_stocked`/`is_slow`). ETL now requires the `last_movement` output column — old query files fail the column check.
+- Slow = active SKU, `on_hand > 0` AND `usage_qty_90d = 0` (provisional 90-day window, pending Raj; perishables may need shorter). Slow % = slow ÷ stocked item-warehouses; count-based only — value ($) version blocked on a cost source.
+- Shares the SCRUM-92 `inv_*` filters; zero on-hand rows (e.g. SESAME-10) are excluded from BOTH numerator and denominator. Never-moved rows (`last_movement NULL`) sort first with a "never moved" pill.
+- Adversarial seed: one old-movement slow row, one never-moved slow row, moving rows, an inactive slow candidate (must not appear), and a zero-on-hand row (must not inflate denominator).
+
 ## Good adversarial test pattern
 1. Load page with no filters, note baseline totals (e.g. Delivered Qty card).
 2. Apply one filter; assert totals change to a DB-verified value, not just "page loads".
