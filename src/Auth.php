@@ -30,6 +30,7 @@ final class Auth
         'delivery'         => ['page' => 'dashboard.php',    'label' => 'Delivery'],
         'warehouse'        => ['page' => 'warehouse.php',    'label' => 'Warehouse'],
         'customer_service' => ['page' => 'dashboard_cs.php', 'label' => 'Customer Service'],
+        'procurement'      => ['page' => 'procurement.php',  'label' => 'Procurement'],
         'audit'            => ['page' => 'audit.php',        'label' => 'Audit'],
     ];
 
