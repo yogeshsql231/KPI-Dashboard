@@ -5,6 +5,10 @@ description: Test the KPI Dashboard PHP pages (Overview, Delivery, Warehouse, Cu
 
 # Testing the KPI Dashboard locally
 
+## Before testing a "merged" feature: verify it's actually on main
+- Stacked PRs are risky here: PR #65 (SCRUM-87) merged into its base feature branch *after* that branch had already merged to main, so the commit never reached main. Symptom on the user's box: "migration file not found".
+- Always confirm with `git merge-base --is-ancestor <commit> main` (or `git show main:<new file>`) before testing/deploying a feature believed merged. If stranded, cherry-pick onto a fresh branch off main and open a restore PR.
+
 ## Setup
 1. Start MySQL: `sudo service mysql start`. Local DB: `kpi_dashboard`, user `kpi_app`, password `kpi_local_pw` (dev-only). If the DB is missing, apply `sql/*.sql` then `sql/migrations/*.sql` in order, and seed with the sample-data scripts used in prior sessions (see repo history / `/home/ubuntu/attachments/gen_*seed*.py` if present).
 2. Serve: `php -S 127.0.0.1:8090 -t public` (run in background). Pages: `overview.php`, `dashboard.php` (Delivery), `warehouse.php`, `dashboard_cs.php` (Customer Service), `procurement.php`, `audit.php`.
