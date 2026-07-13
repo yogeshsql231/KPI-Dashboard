@@ -91,6 +91,39 @@ final class KpiRepository
         ];
     }
 
+    /**
+     * Order Cycle Time (SCRUM-87): average days from order entry (order_date)
+     * to the actual shipment (actual_date), per order. Orders are keyed like
+     * otifOrders(); partial shipments measure to the LAST shipment
+     * (MAX actual_date). Unshipped orders (no actual_date) are excluded.
+     *
+     * @return array{orders: int, avg_days: ?float}
+     */
+    public function cycleTimeOrders(Filters $f): array
+    {
+        [$where, $params] = $f->shipmentClause();
+        $stmt = $this->pdo->prepare(
+            "SELECT COUNT(*) AS orders, AVG(o.cycle_days) AS avg_days
+             FROM (
+                SELECT
+                    COALESCE(NULLIF(so_docentry, ''), po_number)   AS order_key,
+                    DATEDIFF(MAX(actual_date), MIN(order_date))    AS cycle_days
+                FROM vw_order_shipment_kpi
+                WHERE $where
+                  AND actual_date IS NOT NULL
+                  AND order_date IS NOT NULL
+                GROUP BY COALESCE(NULLIF(so_docentry, ''), po_number)
+             ) o"
+        );
+        $stmt->execute($params);
+        $r = $stmt->fetch() ?: [];
+        $orders = (int) ($r['orders'] ?? 0);
+        return [
+            'orders'   => $orders,
+            'avg_days' => $orders > 0 && $r['avg_days'] !== null ? (float) $r['avg_days'] : null,
+        ];
+    }
+
     /** @return array<string, float> metric_key => target_value */
     public function targets(): array
     {
