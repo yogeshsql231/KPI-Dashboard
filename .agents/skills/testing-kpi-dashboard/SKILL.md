@@ -77,6 +77,12 @@ description: Test the KPI Dashboard PHP pages (Overview, Delivery, Warehouse, Cu
 - Fast pre-check before browser testing: `php -r "...new AlertRepository(Database::connection()); foreach ($r->evaluate() as $f) ..."` prints findings without touching alert_events.
 - Local `mysql -u root` may be denied (auth_socket); use `sudo mysql kpi_dashboard` instead.
 
+## Order-level OTIF widget (SCRUM-86) specifics
+- Order-level OTIF (Overview tile, CS "OTIF by Order" card) = `MIN(otif_flag) GROUP BY sales_order` (Delivery view) / `GROUP BY COALESCE(NULLIF(so_docentry,''), po_number)` (shipments view) — it will legitimately read LOWER than the line-level `AVG(otif_flag)` rate; don't flag the mismatch as a bug.
+- DB parity: `SELECT COUNT(*), SUM(a) FROM (SELECT sales_order, MIN(otif_flag) a FROM vw_delivery_lines WHERE otif_flag IS NOT NULL [AND warehouse=...] GROUP BY sales_order) x`.
+- The CS card hides itself (own try/catch) when migration 011 (`so_docentry` on `vw_order_shipment_kpi`) isn't applied — a missing card may mean a missing migration, not broken code.
+- Overview RAG thresholds: green ≥95%, gold ≥85%, red below (tile spark `data-color`); seed data is typically all-red, so verify color logic from the value + `data-color` attr rather than expecting green.
+
 ## Good adversarial test pattern
 1. Load page with no filters, note baseline totals (e.g. Delivered Qty card).
 2. Apply one filter; assert totals change to a DB-verified value, not just "page loads".
