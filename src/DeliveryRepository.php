@@ -460,6 +460,84 @@ final class DeliveryRepository
     }
 
     /**
+     * Order Cycle Time (SCRUM-87): average days from SO entry (posting_date =
+     * ORDR.DocDate) to the actual shipment (delivery_date = last linked
+     * delivery-note date), per order. Only fully-shipped measurement makes
+     * sense per line, so lines with no delivery_date (in-flight) and
+     * cancelled orders (otif_flag IS NULL) are excluded.
+     *
+     * @return array{orders: int, avg_days: ?float, min_days: ?int, max_days: ?int}
+     */
+    public function cycleTime(DeliveryFilters $f): array
+    {
+        [$where, $params] = $f->clause();
+        $stmt = $this->pdo->prepare(
+            "SELECT
+                COUNT(*)            AS orders,
+                AVG(o.cycle_days)   AS avg_days,
+                MIN(o.cycle_days)   AS min_days,
+                MAX(o.cycle_days)   AS max_days
+             FROM (
+                SELECT sales_order,
+                       DATEDIFF(MAX(delivery_date), MIN(posting_date)) AS cycle_days
+                FROM vw_delivery_lines
+                WHERE $where
+                  AND otif_flag IS NOT NULL
+                  AND delivery_date IS NOT NULL
+                  AND posting_date IS NOT NULL
+                GROUP BY sales_order
+             ) o"
+        );
+        $stmt->execute($params);
+        $r = $stmt->fetch() ?: [];
+        $orders = (int) ($r['orders'] ?? 0);
+        return [
+            'orders'   => $orders,
+            'avg_days' => $orders > 0 && $r['avg_days'] !== null ? (float) $r['avg_days'] : null,
+            'min_days' => $orders > 0 && $r['min_days'] !== null ? (int) $r['min_days'] : null,
+            'max_days' => $orders > 0 && $r['max_days'] !== null ? (int) $r['max_days'] : null,
+        ];
+    }
+
+    /**
+     * Weekly average order cycle time (days) over a rolling window, for the
+     * Overview tile sparkline. Weeks are keyed by SO entry date; the
+     * date-range filter is dropped like the other tile trends.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function cycleTimeWeeklyTrend(DeliveryFilters $f, int $weeks = 8): array
+    {
+        [$where, $params] = $f->clauseExcept('date');
+        $days = max(1, (int) $weeks) * 7;
+        $stmt = $this->pdo->prepare(
+            "SELECT
+                o.yw                        AS yw,
+                MIN(o.week_start)           AS week_start,
+                COUNT(*)                    AS orders,
+                AVG(o.cycle_days)           AS avg_days
+             FROM (
+                SELECT
+                    sales_order,
+                    YEARWEEK(posting_date, 3) AS yw,
+                    MIN(posting_date)         AS week_start,
+                    DATEDIFF(MAX(delivery_date), MIN(posting_date)) AS cycle_days
+                FROM vw_delivery_lines
+                WHERE $where
+                  AND otif_flag IS NOT NULL
+                  AND delivery_date IS NOT NULL
+                  AND posting_date IS NOT NULL
+                  AND posting_date >= DATE_SUB(CURDATE(), INTERVAL $days DAY)
+                GROUP BY sales_order, YEARWEEK(posting_date, 3)
+             ) o
+             GROUP BY o.yw
+             ORDER BY o.yw"
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /**
      * Monthly order performance (orders, $, delivered qty) for the Overview's
      * sales-performance and growth charts.
      *
