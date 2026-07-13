@@ -111,8 +111,10 @@ SELECT
     -- late: the actual delivery happened MORE THAN ONE DAY after the promised
     -- date, or the promise (+1 day grace) has passed and the line is still not
     -- fully delivered. Grace period = 1 day. Promised date = line required date
-    -- (RDR1.ShipDate), falling back to header DocDueDate.
+    -- (RDR1.ShipDate), falling back to header DocDueDate. Cancelled orders are
+    -- never late — they were never meant to ship.
     CASE
+        WHEN T0."CANCELED" = 'Y' THEN 'No'
         WHEN (SELECT MAX(D1."DocDate") FROM "DAMASCUS_BAKERY"."DLN1" D1
               WHERE D1."BaseType" = 17 AND D1."BaseEntry" = T1."DocEntry"
                 AND D1."BaseLine" = T1."LineNum")
@@ -162,7 +164,9 @@ SELECT
                 AND D1."BaseLine" = T1."LineNum"), 0) / T1."Quantity"
          ELSE 0 END                                                 AS fill_rate,
     'No'                                                            AS manual_bol,
-    COALESCE(SHP."TrnspName", T0."NumAtCard")                       AS carrier
+    -- Carrier = shipping type name only. (NumAtCard is the customer's ref /
+    -- PO number, not a carrier — it must not leak into the Carrier column.)
+    SHP."TrnspName"                                                  AS carrier
 
 FROM "DAMASCUS_BAKERY"."ORDR" T0
     INNER JOIN "DAMASCUS_BAKERY"."RDR1" T1 ON T1."DocEntry" = T0."DocEntry"

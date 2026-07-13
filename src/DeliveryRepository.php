@@ -279,8 +279,8 @@ final class DeliveryRepository
     /**
      * Late deliveries grouped by month (YYYY-MM of posting_date), for the
      * "Late Deliveries vs Late Payments" report. late_lines counts delivered
-     * lines flagged late; total_lines is all lines in the month (denominator
-     * for late %). Respects the current filter selection.
+     * lines flagged late; total_lines is all non-cancelled lines in the month
+     * (denominator for late %). Respects the current filter selection.
      *
      * @return array<string, array<string, mixed>> keyed by month
      */
@@ -290,7 +290,7 @@ final class DeliveryRepository
         $stmt = $this->pdo->prepare(
             "SELECT
                 DATE_FORMAT(posting_date, '%Y-%m') AS ym,
-                COUNT(*)                           AS total_lines,
+                COUNT(late_flag)                   AS total_lines,
                 SUM(late_flag)                     AS late_lines
              FROM vw_delivery_lines
              WHERE $where AND posting_date IS NOT NULL
