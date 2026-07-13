@@ -113,6 +113,18 @@ final class AlertRepository
         if ($enabled('item_master_stale')) {
             $findings = array_merge($findings, $this->checkItemMasterStale($threshold('item_master_stale', 168), $severity('item_master_stale', 'warning')));
         }
+        if ($enabled('transfer_missing_endpoint')) {
+            $findings = array_merge($findings, $this->checkTransferMissingEndpoint($severity('transfer_missing_endpoint', 'warning')));
+        }
+        if ($enabled('transfer_same_warehouse')) {
+            $findings = array_merge($findings, $this->checkTransferSameWarehouse($severity('transfer_same_warehouse', 'warning')));
+        }
+        if ($enabled('transfer_bad_quantity')) {
+            $findings = array_merge($findings, $this->checkTransferBadQuantity($severity('transfer_bad_quantity', 'warning')));
+        }
+        if ($enabled('transfer_missing_item')) {
+            $findings = array_merge($findings, $this->checkTransferMissingItem($severity('transfer_missing_item', 'warning')));
+        }
 
         return $findings;
     }
@@ -399,6 +411,104 @@ final class AlertRepository
             $this->trimNum($hours)
         );
         return [$this->finding('item_master_stale', $severity, 'data', 'etl', 'warehouse_stock', $msg, round($ageHours, 1))];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function checkTransferMissingEndpoint(string $severity): array
+    {
+        if (!$this->tableExists('material_movements')) {
+            return [];
+        }
+        $rows = $this->pdo->query(
+            "SELECT source_key FROM material_movements
+             WHERE movement_type = 'transfer'
+               AND (from_warehouse IS NULL OR TRIM(from_warehouse) = ''
+                    OR to_warehouse IS NULL OR TRIM(to_warehouse) = '')
+             ORDER BY source_key"
+        )->fetchAll(PDO::FETCH_COLUMN);
+        if ($rows === []) {
+            return [];
+        }
+        $msg = sprintf(
+            '%d transfer record%s missing a from/to warehouse: %s.',
+            count($rows),
+            count($rows) === 1 ? '' : 's',
+            $this->sampleList($rows)
+        );
+        return [$this->finding('transfer_missing_endpoint', $severity, 'data', 'transfer', 'transfer_missing_endpoint', $msg, count($rows))];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function checkTransferSameWarehouse(string $severity): array
+    {
+        if (!$this->tableExists('material_movements')) {
+            return [];
+        }
+        $rows = $this->pdo->query(
+            "SELECT source_key FROM material_movements
+             WHERE movement_type = 'transfer'
+               AND from_warehouse IS NOT NULL AND to_warehouse IS NOT NULL
+               AND TRIM(from_warehouse) <> '' AND TRIM(from_warehouse) = TRIM(to_warehouse)
+             ORDER BY source_key"
+        )->fetchAll(PDO::FETCH_COLUMN);
+        if ($rows === []) {
+            return [];
+        }
+        $msg = sprintf(
+            '%d transfer record%s with the same from and to warehouse: %s.',
+            count($rows),
+            count($rows) === 1 ? '' : 's',
+            $this->sampleList($rows)
+        );
+        return [$this->finding('transfer_same_warehouse', $severity, 'data', 'transfer', 'transfer_same_warehouse', $msg, count($rows))];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function checkTransferBadQuantity(string $severity): array
+    {
+        if (!$this->tableExists('material_movements')) {
+            return [];
+        }
+        $rows = $this->pdo->query(
+            "SELECT source_key FROM material_movements
+             WHERE movement_type = 'transfer'
+               AND (quantity IS NULL OR quantity <= 0)
+             ORDER BY source_key"
+        )->fetchAll(PDO::FETCH_COLUMN);
+        if ($rows === []) {
+            return [];
+        }
+        $msg = sprintf(
+            '%d transfer record%s with a missing or non-positive quantity: %s.',
+            count($rows),
+            count($rows) === 1 ? '' : 's',
+            $this->sampleList($rows)
+        );
+        return [$this->finding('transfer_bad_quantity', $severity, 'data', 'transfer', 'transfer_bad_quantity', $msg, count($rows))];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function checkTransferMissingItem(string $severity): array
+    {
+        if (!$this->tableExists('material_movements')) {
+            return [];
+        }
+        $rows = $this->pdo->query(
+            "SELECT source_key FROM material_movements
+             WHERE movement_type = 'transfer'
+               AND (item_code IS NULL OR TRIM(item_code) = '')
+             ORDER BY source_key"
+        )->fetchAll(PDO::FETCH_COLUMN);
+        if ($rows === []) {
+            return [];
+        }
+        $msg = sprintf(
+            '%d transfer record%s with no item code: %s.',
+            count($rows),
+            count($rows) === 1 ? '' : 's',
+            $this->sampleList($rows)
+        );
+        return [$this->finding('transfer_missing_item', $severity, 'data', 'transfer', 'transfer_missing_item', $msg, count($rows))];
     }
 
     /** Comma list of the first few codes, with an ellipsis count for the rest. */
