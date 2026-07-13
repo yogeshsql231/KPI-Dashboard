@@ -81,6 +81,9 @@ $whOptions = [];
 $lastRefreshed = null;
 $otif = ['total_orders' => 0, 'otif_orders' => 0, 'otif_rate' => null];
 $otifTrend = [];
+$cycle = ['orders' => 0, 'avg_days' => null, 'min_days' => null, 'max_days' => null];
+$cycleTrend = [];
+$hasCycle = false;
 
 $filters = DeliveryFilters::fromRequest($_GET);
 // Filter hierarchy: warehouse only unlocks after a date range is chosen.
@@ -97,6 +100,13 @@ try {
     $trend = $repo->weeklyTrend($filters, 8);
     $otif = $repo->otifOrders($filters);
     $otifTrend = $repo->otifWeeklyTrend($filters, 8);
+    try {
+        $cycle = $repo->cycleTime($filters);
+        $cycleTrend = $repo->cycleTimeWeeklyTrend($filters, 8);
+        $hasCycle = true;
+    } catch (Throwable $ex) {
+        $hasCycle = false; // migration 017 (delivery_date) not applied yet
+    }
     $monthly = $repo->monthlyPerformance($filters);
     $topCust = $repo->customersByOrders($filters, 5);
     $divisionRows = $repo->byDivisionCustomer($filters);
@@ -190,6 +200,13 @@ if ($otifRate !== null) {
     $otifColor = $otifRate >= 0.95 ? 'var(--ov-green)' : ($otifRate >= 0.85 ? 'var(--ov-gold)' : 'var(--ov-red)');
 }
 
+// Cycle-time tile: avg days from SO entry to actual shipment, per order.
+$tCycle = [];
+foreach ($cycleTrend as $r) {
+    $tCycle[] = round((float) $r['avg_days'], 1);
+}
+$cycleAvg = $cycle['avg_days'];
+
 $tiles = [
     [
         'label' => 'OTIF',
@@ -200,6 +217,19 @@ $tiles = [
         'delta' => deltaPct($tOtif),
         'spark' => $tOtif,
         'color' => $otifColor,
+    ],
+    [
+        'label' => 'Cycle time',
+        'value' => $cycleAvg === null ? '—' : number_format($cycleAvg, 1) . 'd',
+        'sub'   => !$hasCycle
+            ? 'apply migration 017 + re-run delivery ETL'
+            : ($cycle['orders'] > 0
+                ? num($cycle['orders']) . ' shipped orders · SO entry → shipment'
+                : 'no shipped orders in range'),
+        'delta' => deltaPct($tCycle),
+        'spark' => $tCycle,
+        'color' => 'var(--ov-purple)',
+        'invert' => true, // shorter cycle time is better
     ],
     [
         'label' => 'Pallets on hand',
@@ -432,7 +462,7 @@ $chartData = [
 
     <div class="sec" data-id="orders">
         <div class="handle" draggable="true"><span class="grip">⠿</span><span>Pallets &amp; Orders</span></div>
-        <div class="g5">
+        <div class="g6">
             <?php foreach ($tiles as $t): ?>
             <div class="ovcard tile">
                 <div class="top">
@@ -441,7 +471,8 @@ $chartData = [
                         <div class="val"><?= e($t['value']) ?></div>
                     </div>
                     <?php if ($t['delta'] !== null): ?>
-                    <span class="delta <?= $t['delta'] >= 0 ? 'pos' : 'neg' ?>"><?= $t['delta'] >= 0 ? '▲ +' : '▼ ' ?><?= e($t['delta']) ?>%</span>
+                    <?php $up = $t['delta'] >= 0; $good = ($t['invert'] ?? false) ? !$up : $up; ?>
+                    <span class="delta <?= $good ? 'pos' : 'neg' ?>"><?= $up ? '▲ +' : '▼ ' ?><?= e($t['delta']) ?>%</span>
                     <?php endif; ?>
                 </div>
                 <div class="reveal"><div class="spark" data-series="<?= e((string) json_encode(array_map('floatval', $t['spark']))) ?>" data-color="<?= e($t['color']) ?>"></div></div>

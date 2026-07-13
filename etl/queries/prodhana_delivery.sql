@@ -29,6 +29,12 @@ SELECT
     T0."DocDate"                                                     AS posting_date,
     T0."DocDueDate"                                                  AS ship_date,
     T1."ShipDate"                                                    AS required_date,
+    -- actual shipment date: LAST linked delivery-note posting date, so orders
+    -- split across partial shipments measure to the final shipment. NULL until
+    -- something ships (in-flight lines stay out of cycle-time averages).
+    (SELECT MAX(D1."DocDate") FROM "DAMASCUS_BAKERY"."DLN1" D1
+     WHERE D1."BaseType" = 17 AND D1."BaseEntry" = T1."DocEntry"
+       AND D1."BaseLine" = T1."LineNum")                             AS delivery_date,
     T0."CardCode"                                                    AS customer_code,
     T0."CardName"                                                    AS customer_name,
     CG."GroupName"                                                   AS customer_group,

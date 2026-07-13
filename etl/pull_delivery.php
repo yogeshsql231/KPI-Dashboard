@@ -24,7 +24,7 @@ declare(strict_types=1);
  * The source query must return these output columns (alias them in the .sql
  * file to match your real schema):
  *   source_key, sales_order, so_status, posting_date, ship_date, required_date,
- *   customer_code, customer_name, customer_group, is_retail, po_number,
+ *   delivery_date, customer_code, customer_name, customer_group, is_retail, po_number,
  *   item_code, item_description, warehouse, order_qty, qty_pallet, qty_per_pack,
  *   qty_per_pallet, unit_of_measure, released_qty, delivered_qty, line_amount,
  *   delivered_amount, pick_qty, pick_status, approved, short_shipment,
@@ -100,7 +100,7 @@ $textCols = [
     'complete_shipment', 'otif', 'manual_bol', 'carrier',
 ];
 /** Date columns normalised to YYYY-MM-DD. */
-$dateCols = ['posting_date', 'ship_date', 'required_date'];
+$dateCols = ['posting_date', 'ship_date', 'required_date', 'delivery_date'];
 /** Numeric columns. */
 $numCols = [
     'order_qty', 'qty_pallet', 'qty_per_pack', 'qty_per_pallet', 'released_qty',

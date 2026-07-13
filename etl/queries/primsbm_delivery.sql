@@ -19,6 +19,10 @@ SELECT
     PostingDate       AS posting_date,
     ShipDate          AS ship_date,
     RequiredDate      AS required_date,
+    -- Actual shipment date (last delivery-note date). Map to the cache column
+    -- if your box has one (e.g. DeliveredDate); otherwise the prodhana query
+    -- computes it from DLN1 and this feed leaves cycle time unavailable.
+    CAST(NULL AS DATE) AS delivery_date,
     CustomerCode      AS customer_code,
     CustomerName      AS customer_name,
     -- v2 fields: map to the cache columns if they exist, else keep the NULL/0
