@@ -30,6 +30,10 @@ declare(strict_types=1);
  *   delivered_amount, pick_qty, pick_status, approved, short_shipment,
  *   late_shipment, complete_shipment, otif, fill_rate, manual_bol, carrier
  *
+ * Optional output columns (written when present, left NULL otherwise so older
+ * source queries keep working): so_created_date, shipment_date (SCRUM-87 Order
+ * Cycle Time — order-entry and actual goods-out dates).
+ *
  * Idempotent: rows are upserted on (source_system, source_key), so re-running
  * updates existing rows instead of duplicating them. READ-ONLY on the source.
  */
@@ -101,6 +105,13 @@ $textCols = [
 ];
 /** Date columns normalised to YYYY-MM-DD. */
 $dateCols = ['posting_date', 'ship_date', 'required_date'];
+/**
+ * Optional date columns (SCRUM-87): written when the source query supplies
+ * them, stored NULL otherwise. Kept out of $expected so source queries that
+ * predate these columns (e.g. primsbm_delivery.sql) don't fail the required-
+ * column check.
+ */
+$optionalDateCols = ['so_created_date', 'shipment_date'];
 /** Numeric columns. */
 $numCols = [
     'order_qty', 'qty_pallet', 'qty_per_pack', 'qty_per_pallet', 'released_qty',
@@ -108,7 +119,7 @@ $numCols = [
     'is_retail',
 ];
 $expected = array_merge(['source_key'], $textCols, $dateCols, $numCols);
-$allCols  = array_merge($textCols, $dateCols, $numCols);
+$allCols  = array_merge($textCols, $dateCols, $optionalDateCols, $numCols);
 
 echo "[etl] source=$source  query=$queryFile" . ($dryRun ? '  (dry-run)' : '') . "\n";
 
@@ -177,7 +188,7 @@ try {
         foreach ($textCols as $c) {
             $params[':' . $c] = nullify($row[$c] ?? null);
         }
-        foreach ($dateCols as $c) {
+        foreach (array_merge($dateCols, $optionalDateCols) as $c) {
             $params[':' . $c] = normDate($row[$c] ?? null);
         }
         foreach ($numCols as $c) {

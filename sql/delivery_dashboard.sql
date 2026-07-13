@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS delivery_lines (
     posting_date      DATE         NULL,          -- ORDR.DocDate
     ship_date         DATE         NULL,          -- ORDR.DocDueDate (promised ship)
     required_date     DATE         NULL,          -- ORDR.ReqDate
+    so_created_date   DATE         NULL,          -- ORDR.CreateDate (order entry — SCRUM-87)
+    shipment_date     DATE         NULL,          -- actual goods-out: MAX(DLN1.DocDate) for the line (SCRUM-87)
     customer_code     VARCHAR(50)  NULL,          -- ORDR.CardCode
     customer_name     VARCHAR(255) NULL,          -- ORDR.CardName
     customer_group    VARCHAR(100) NULL,          -- OCRD.GroupCode / OCRG.GroupName
@@ -64,6 +66,7 @@ CREATE TABLE IF NOT EXISTS delivery_lines (
     PRIMARY KEY (id),
     UNIQUE KEY uq_delivery_source (source_system, source_key),
     KEY idx_delivery_dates (posting_date, ship_date),
+    KEY idx_delivery_cycle (so_created_date, shipment_date),
     KEY idx_delivery_filter (warehouse, customer_code, item_code, carrier, so_status, pick_status),
     KEY idx_delivery_order (sales_order, po_number)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;

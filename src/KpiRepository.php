@@ -91,6 +91,53 @@ final class KpiRepository
         ];
     }
 
+    /**
+     * Order Cycle Time (SCRUM-87) for the Customer Service dashboard, read from
+     * the SAP delivery cache (vw_delivery_lines) so the number matches the
+     * Overview tile exactly. Average elapsed days from order entry (SO creation)
+     * to the order's last shipment, per sales order. Cancelled and not-yet-
+     * shipped (in-flight) orders are excluded. Returns null when the delivery
+     * cache / SCRUM-87 columns aren't loaded yet (older installs).
+     *
+     * @return array{orders: int, avg_days: ?float}|null
+     */
+    public function orderCycleTime(Filters $f): ?array
+    {
+        $ready = $this->pdo->query(
+            "SELECT COUNT(*) FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = 'delivery_lines'
+               AND column_name IN ('so_created_date', 'shipment_date')"
+        )->fetchColumn();
+        if ((int) $ready < 2) {
+            return null;
+        }
+
+        [$where, $params] = $f->deliveryClause();
+        $stmt = $this->pdo->prepare(
+            "SELECT COUNT(*) AS orders, AVG(o.cycle_days) AS avg_days
+             FROM (
+                SELECT
+                    sales_order,
+                    DATEDIFF(MAX(shipment_date), MIN(COALESCE(so_created_date, posting_date))) AS cycle_days
+                FROM vw_delivery_lines
+                WHERE $where
+                  AND UPPER(COALESCE(so_status, '')) NOT IN ('CANCELLED', 'CANCELED')
+                GROUP BY sales_order
+                HAVING MAX(shipment_date) IS NOT NULL
+                   AND cycle_days IS NOT NULL
+                   AND cycle_days >= 0
+             ) o"
+        );
+        $stmt->execute($params);
+        $r = $stmt->fetch() ?: [];
+        $orders = (int) ($r['orders'] ?? 0);
+        return [
+            'orders'   => $orders,
+            'avg_days' => $orders > 0 && $r['avg_days'] !== null ? (float) $r['avg_days'] : null,
+        ];
+    }
+
     /** @return array<string, float> metric_key => target_value */
     public function targets(): array
     {

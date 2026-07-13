@@ -29,6 +29,17 @@ SELECT
     T0."DocDate"                                                     AS posting_date,
     T0."DocDueDate"                                                  AS ship_date,
     T1."ShipDate"                                                    AS required_date,
+    -- SCRUM-87 Order Cycle Time: order-entry date (when the SO record was
+    -- created) and this line's actual goods-out date (its latest linked
+    -- delivery). CreateDate falls back to DocDate on the rare row where it's
+    -- absent. shipment_date is NULL until the line ships (in-flight orders are
+    -- excluded from the cycle-time average downstream).
+    COALESCE(T0."CreateDate", T0."DocDate")                          AS so_created_date,
+    (SELECT MAX(D1."DocDate")
+       FROM "DAMASCUS_BAKERY"."DLN1" D1
+      WHERE D1."BaseType"  = 17
+        AND D1."BaseEntry" = T1."DocEntry"
+        AND D1."BaseLine"  = T1."LineNum")                           AS shipment_date,
     T0."CardCode"                                                    AS customer_code,
     T0."CardName"                                                    AS customer_name,
     CG."GroupName"                                                   AS customer_group,

@@ -81,6 +81,8 @@ $whOptions = [];
 $lastRefreshed = null;
 $otif = ['total_orders' => 0, 'otif_orders' => 0, 'otif_rate' => null];
 $otifTrend = [];
+$cycle = ['orders' => 0, 'avg_days' => null];
+$cycleTrend = [];
 
 $filters = DeliveryFilters::fromRequest($_GET);
 // Filter hierarchy: warehouse only unlocks after a date range is chosen.
@@ -97,6 +99,8 @@ try {
     $trend = $repo->weeklyTrend($filters, 8);
     $otif = $repo->otifOrders($filters);
     $otifTrend = $repo->otifWeeklyTrend($filters, 8);
+    $cycle = $repo->orderCycleTime($filters);
+    $cycleTrend = $repo->cycleTimeWeeklyTrend($filters, 8);
     $monthly = $repo->monthlyPerformance($filters);
     $topCust = $repo->customersByOrders($filters, 5);
     $divisionRows = $repo->byDivisionCustomer($filters);
@@ -190,6 +194,13 @@ if ($otifRate !== null) {
     $otifColor = $otifRate >= 0.95 ? 'var(--ov-green)' : ($otifRate >= 0.85 ? 'var(--ov-gold)' : 'var(--ov-red)');
 }
 
+// Order Cycle Time tile: avg days from SO creation to last shipment (SCRUM-87).
+$cycleDays = $cycle['avg_days'];
+$tCycle = [];
+foreach ($cycleTrend as $r) {
+    $tCycle[] = round((float) $r['avg_days'], 1);
+}
+
 $tiles = [
     [
         'label' => 'OTIF',
@@ -200,6 +211,16 @@ $tiles = [
         'delta' => deltaPct($tOtif),
         'spark' => $tOtif,
         'color' => $otifColor,
+    ],
+    [
+        'label' => 'Order Cycle Time',
+        'value' => $cycleDays === null ? '—' : number_format($cycleDays, 1) . ' d',
+        'sub'   => $cycle['orders'] > 0
+            ? 'avg SO entry → shipment · ' . num($cycle['orders']) . ' shipped orders'
+            : 'no shipped orders in range',
+        'delta' => deltaPct($tCycle),
+        'spark' => $tCycle,
+        'color' => 'var(--ov-blue)',
     ],
     [
         'label' => 'Pallets on hand',
@@ -432,7 +453,7 @@ $chartData = [
 
     <div class="sec" data-id="orders">
         <div class="handle" draggable="true"><span class="grip">⠿</span><span>Pallets &amp; Orders</span></div>
-        <div class="g5">
+        <div class="g6">
             <?php foreach ($tiles as $t): ?>
             <div class="ovcard tile">
                 <div class="top">

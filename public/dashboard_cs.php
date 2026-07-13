@@ -55,6 +55,7 @@ $orderStatus = [];
 $demographics = [];
 $warehouseOptions = [];
 $otifOrders = null;
+$orderCycle = null;
 $filters = Filters::fromRequest($_GET);
 
 try {
@@ -72,6 +73,11 @@ try {
         $otifOrders = $repo->otifOrders($filters);
     } catch (Throwable $ex) {
         $otifOrders = null; // migration 011 (so_docentry on the view) not applied yet
+    }
+    try {
+        $orderCycle = $repo->orderCycleTime($filters);
+    } catch (Throwable $ex) {
+        $orderCycle = null; // SCRUM-87 delivery cache / columns not loaded yet
     }
 } catch (Throwable $ex) {
     $error = 'Unable to load KPI data. Check the database connection in your .env file.';
@@ -178,6 +184,14 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
             <div class="card-label">OTIF by Order</div>
             <div class="card-value"><?= pct($otifOrders['otif_rate']) ?></div>
             <div class="card-target"><?= num($otifOrders['otif_orders']) ?> of <?= num($otifOrders['total_orders']) ?> orders · target <?= pct((float) $otifTarget, 0) ?></div>
+        </div>
+        <?php endif; ?>
+
+        <?php if ($orderCycle !== null && $orderCycle['orders'] > 0): ?>
+        <div class="card neutral">
+            <div class="card-label">Order Cycle Time</div>
+            <div class="card-value"><?= $orderCycle['avg_days'] !== null ? number_format((float) $orderCycle['avg_days'], 1) : '—' ?></div>
+            <div class="card-target">days (SO entry → shipment) · <?= num($orderCycle['orders']) ?> shipped orders</div>
         </div>
         <?php endif; ?>
 

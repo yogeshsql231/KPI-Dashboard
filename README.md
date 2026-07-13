@@ -163,6 +163,34 @@ on-hand in SAP HANA — confirm with Raj whether HANA retains that before relyin
 on pre-capture figures. Preview the widget with sample history via
 `mysql -u root kpi_dashboard < sql/warehouse_stock_snapshots_sample.sql`.
 
+## Order Cycle Time (SCRUM-87)
+
+Order Cycle Time = elapsed time from **order entry** (SO created) to **shipment**
+(goods leave the warehouse), averaged per sales order and shown on the Overview
+(KPI tile + 8-week sparkline) and Customer Service dashboards, filterable by
+customer/warehouse/date. It reads the SAP delivery cache so both dashboards show
+the same number.
+
+`etl/pull_delivery.php` (via `etl/queries/prodhana_delivery.sql`) now also loads
+two dates onto `delivery_lines` — `so_created_date` (`ORDR.CreateDate`, falling
+back to `DocDate`) and `shipment_date` (`MAX(DLN1.DocDate)` for the line, i.e.
+the line's last goods-out). Apply migration `019_order_cycle_time.sql` on an
+existing DB; fresh installs get the columns from `sql/delivery_dashboard.sql`.
+Both columns are optional in the loader, so the SQL Server cache feed
+(`primsbm_delivery.sql`) keeps working and simply leaves them NULL.
+
+```
+cycle_days = last shipment date − order-entry date   (per sales order)
+Avg Cycle Time = AVG(cycle_days) over shipped, non-cancelled orders
+```
+
+Edge cases: cancelled orders are excluded; orders with no shipment yet
+(in-flight) are excluded until they ship. Orders split across **partial
+shipments** use the **last** shipment date (order not complete until the final
+line ships) — confirm first-vs-last with Raj before sign-off. Dates are captured
+at day granularity, so cycle time is reported in days. Preview locally with the
+demo dates seeded by `sql/delivery_seed.sql`.
+
 ## Qlik live data connection (SCRUM-31)
 
 The Qlik ("Click") app runs off a SQL Server stored procedure that surfaces the

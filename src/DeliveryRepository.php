@@ -460,6 +460,89 @@ final class DeliveryRepository
     }
 
     /**
+     * Order Cycle Time (SCRUM-87): average elapsed days from order entry (SO
+     * creation) to shipment, measured per SALES ORDER. Cycle time is realised
+     * at the WHOLE-ORDER level, so it is computed once per order:
+     *
+     *   cycle_days = last shipment date (MAX shipment_date across the order's
+     *                lines) − order-entry date (so_created_date, falling back
+     *                to posting_date)
+     *
+     * The last shipment is used so an order split across partial shipments is
+     * only counted as complete when its final line has shipped (see the
+     * first-vs-last decision noted for Raj in the PR). Cancelled orders and
+     * orders with no shipment yet (in-flight) are excluded from the average.
+     *
+     * @return array{orders: int, avg_days: ?float}
+     */
+    public function orderCycleTime(DeliveryFilters $f): array
+    {
+        [$where, $params] = $f->clause();
+        $stmt = $this->pdo->prepare(
+            "SELECT COUNT(*) AS orders, AVG(o.cycle_days) AS avg_days
+             FROM (
+                SELECT
+                    sales_order,
+                    DATEDIFF(MAX(shipment_date), MIN(COALESCE(so_created_date, posting_date))) AS cycle_days
+                FROM vw_delivery_lines
+                WHERE $where
+                  AND UPPER(COALESCE(so_status, '')) NOT IN ('CANCELLED', 'CANCELED')
+                GROUP BY sales_order
+                HAVING MAX(shipment_date) IS NOT NULL
+                   AND cycle_days IS NOT NULL
+                   AND cycle_days >= 0
+             ) o"
+        );
+        $stmt->execute($params);
+        $r = $stmt->fetch() ?: [];
+        $orders = (int) ($r['orders'] ?? 0);
+        return [
+            'orders'   => $orders,
+            'avg_days' => $orders > 0 && $r['avg_days'] !== null ? (float) $r['avg_days'] : null,
+        ];
+    }
+
+    /**
+     * Weekly Order Cycle Time trend over a rolling window, keyed by the week
+     * the order shipped (its last shipment). Like the other trends the date-
+     * range filter is dropped so the sparkline always shows recent history
+     * while the remaining filters still apply.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function cycleTimeWeeklyTrend(DeliveryFilters $f, int $weeks = 8): array
+    {
+        [$where, $params] = $f->clauseExcept('date');
+        $days = max(1, (int) $weeks) * 7;
+        $stmt = $this->pdo->prepare(
+            "SELECT
+                o.yw                          AS yw,
+                MIN(o.week_start)             AS week_start,
+                COUNT(*)                      AS orders,
+                AVG(o.cycle_days)             AS avg_days
+             FROM (
+                SELECT
+                    sales_order,
+                    YEARWEEK(MAX(shipment_date), 3) AS yw,
+                    MIN(shipment_date)              AS week_start,
+                    DATEDIFF(MAX(shipment_date), MIN(COALESCE(so_created_date, posting_date))) AS cycle_days
+                FROM vw_delivery_lines
+                WHERE $where
+                  AND UPPER(COALESCE(so_status, '')) NOT IN ('CANCELLED', 'CANCELED')
+                GROUP BY sales_order
+                HAVING MAX(shipment_date) IS NOT NULL
+                   AND MAX(shipment_date) >= DATE_SUB(CURDATE(), INTERVAL $days DAY)
+                   AND cycle_days IS NOT NULL
+                   AND cycle_days >= 0
+             ) o
+             GROUP BY o.yw
+             ORDER BY o.yw"
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /**
      * Monthly order performance (orders, $, delivered qty) for the Overview's
      * sales-performance and growth charts.
      *

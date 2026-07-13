@@ -176,3 +176,19 @@ INSERT INTO delivery_lines (source_system, source_key, sales_order, so_status, p
 INSERT INTO delivery_lines (source_system, source_key, sales_order, so_status, posting_date, ship_date, required_date, customer_code, customer_name, po_number, item_code, item_description, warehouse, order_qty, qty_pallet, qty_per_pack, unit_of_measure, released_qty, delivered_qty, pick_qty, pick_status, approved, short_shipment, late_shipment, complete_shipment, otif, fill_rate, manual_bol, carrier) VALUES ('PRODHANA', '700070-171', '700070', 'Open', '2026-07-03', '2026-07-03', '2026-07-03', 'C0010', 'SYSCO - CLEVELAND', 'PO3090865', '54628-11', 'Item 54628-11', 'FG-ATLANTA', 578, 60, 12, 'EA', 0, 0, 0, 'Not Picked', 'Yes', 'No', 'No', 'No', 'No', 0.0, 'No', 'Common Carrier');
 INSERT INTO delivery_lines (source_system, source_key, sales_order, so_status, posting_date, ship_date, required_date, customer_code, customer_name, po_number, item_code, item_description, warehouse, order_qty, qty_pallet, qty_per_pack, unit_of_measure, released_qty, delivered_qty, pick_qty, pick_status, approved, short_shipment, late_shipment, complete_shipment, otif, fill_rate, manual_bol, carrier) VALUES ('PRODHANA', '700070-172', '700070', 'Open', '2026-07-03', '2026-07-03', '2026-07-03', 'C0010', 'SYSCO - CLEVELAND', 'PO3090865', '45164-14', 'Item 45164-14', 'DRY-02', 527, 60, 8, 'CS', 0, 0, 0, 'Not Picked', 'Yes', 'No', 'Yes', 'No', 'Yes', 0.0, 'No', 'LTL - Estes');
 INSERT INTO delivery_lines (source_system, source_key, sales_order, so_status, posting_date, ship_date, required_date, customer_code, customer_name, po_number, item_code, item_description, warehouse, order_qty, qty_pallet, qty_per_pack, unit_of_measure, released_qty, delivered_qty, pick_qty, pick_status, approved, short_shipment, late_shipment, complete_shipment, otif, fill_rate, manual_bol, carrier) VALUES ('PRODHANA', '700070-173', '700070', 'Open', '2026-07-03', '2026-07-03', '2026-07-03', 'C0010', 'SYSCO - CLEVELAND', 'PO3090865', '46338-12', 'Item 46338-12', 'FG-DALLAS', 166, 100, 6, 'EA', 0, 0, 0, 'Not Picked', 'Yes', 'No', 'No', 'No', 'No', 0.0, 'No', 'CPU');
+
+-- ---------------------------------------------------------------------------
+-- SCRUM-87 demo backfill for Order Cycle Time. The sample rows above only span
+-- a single posting week, so we synthesise an order-entry date (a few weeks
+-- before posting) and an actual shipment date (2-10 days after entry) for the
+-- DELIVERED lines only. Not-picked/undelivered lines keep shipment_date NULL so
+-- they are excluded as in-flight. Real loads get these from prodhana_delivery.sql.
+UPDATE delivery_lines
+   SET so_created_date = DATE_SUB(posting_date, INTERVAL (id % 21) DAY)
+ WHERE source_system = 'PRODHANA';
+
+UPDATE delivery_lines
+   SET shipment_date = DATE_ADD(so_created_date, INTERVAL (2 + (id % 9)) DAY)
+ WHERE source_system = 'PRODHANA'
+   AND UPPER(COALESCE(pick_status, '')) = 'DELIVERED'
+   AND so_created_date IS NOT NULL;
