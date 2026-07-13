@@ -18,6 +18,7 @@ require_once __DIR__ . '/../src/DeliveryRepository.php';
 require_once __DIR__ . '/../src/LpnRepository.php';
 require_once __DIR__ . '/../src/WarehouseInventoryRepository.php';
 require_once __DIR__ . '/../src/DeliveryFilters.php';
+require_once __DIR__ . '/../src/SourceBadge.php';
 
 Auth::requireDepartment('warehouse');
 $canSeeFinancials = Auth::isCLevel();
@@ -72,6 +73,7 @@ $invSummary = ['warehouses' => 0, 'materials' => 0, 'on_hand_pallets' => 0.0, 'a
 $hasStock = false;
 $hasStockSplit = false;
 $stockSplitRows = [];
+$invSummaryRows = [];
 $splitDim = isset($_GET['split']) && in_array($_GET['split'], ['location', 'type', 'category'], true)
     ? (string) $_GET['split'] : 'location';
 $hasBatches = false;
@@ -123,6 +125,7 @@ try {
     $hasStockSplit = $hasStock && $inv->hasStockClassification();
     if ($hasStockSplit) {
         $stockSplitRows = $inv->stockSplit($filters, $splitDim);
+        $invSummaryRows = $inv->inventorySummary($filters);
     }
     $packagingRows = $inv->packagingRows($filters);
     $agedByWarehouse = $inv->agedByWarehouse($filters);
@@ -282,7 +285,7 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
 
     <div class="grid">
         <section class="panel">
-            <h2>Fulfilment by Warehouse</h2>
+            <h2>Fulfilment by Warehouse <?= SourceBadge::render('fulfilment') ?></h2>
             <p class="panel-note">Pallets are case-to-pallet converted with the same precedence as the capacity table (SAP pallet count, else units/pallet, else the warehouse default).</p>
             <table>
                 <thead><tr><th>Warehouse</th><th class="num">Lines</th><th class="num">Ordered</th><th class="num">Delivered</th><th class="num">Pallets</th><th class="num">Fill Rate</th></tr></thead>
@@ -305,7 +308,7 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
         </section>
 
         <section class="panel">
-            <h2>Warehouse Capacity &amp; Pallets</h2>
+            <h2>Warehouse Capacity &amp; Pallets <?= SourceBadge::render('capacity') ?></h2>
             <p class="panel-note">Pallets are case-to-pallet converted (SAP pallet count, else units/pallet, else the warehouse default). <strong>% of Capacity</strong> is pallets shipped in the selected period vs configured capacity &mdash; not live on-hand inventory. Set real capacities in the <code>warehouse_capacity</code> table.</p>
             <table>
                 <thead><tr><th>Warehouse</th><th class="num">Capacity (pallets)</th><th class="num">Ordered Qty</th><th class="num">Delivered Qty</th><th class="num">Delivered Pallets</th><th class="num">% of Capacity</th></tr></thead>
@@ -375,7 +378,7 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
     </section>
 
     <section class="panel panel-wide">
-        <h2>Stockout Frequency <span class="pill info">SCRUM-93</span></h2>
+        <h2>Stockout Frequency <span class="pill info">SCRUM-93</span> <?= SourceBadge::render('stockout') ?></h2>
         <p class="panel-note">Share of active SKUs that hit <strong>zero on-hand</strong> at any daily snapshot in the selected period &mdash; the numerator counts distinct SKUs, and <strong>Events</strong> is the raw count of stockout-days observed. Discontinued/inactive SKUs are excluded from the denominator. Filterable by warehouse/category/date above. Source: <code>inventory_stock_snapshots</code> (migration <code>014</code> + <code>etl/pull_stock_snapshot.php</code>, run daily).</p>
         <?php if (!$hasStockout): ?>
             <p class="empty">No on-hand snapshot history loaded yet. Run migration <code>014_stock_snapshots.sql</code>, then capture snapshots daily with <code>php etl/pull_stock_snapshot.php --source=PRIMSBM</code> (or <code>--query=etl/queries/prodhana_stock_snapshot.sql --via=PRODHANA</code>). Stockout frequency needs at least one day of history; a longer period gives a more meaningful rate.</p>
@@ -455,7 +458,7 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
     <?php endif; ?>
 
     <section class="panel panel-wide">
-        <h2>Material Flow &mdash; Warehouse &rarr; Staging &rarr; Production &rarr; Waste</h2>
+        <h2>Material Flow &mdash; Warehouse &rarr; Staging &rarr; Production &rarr; Waste <?= SourceBadge::render('movements') ?></h2>
         <p class="panel-note">Period totals in base UoM, reconstructed from SAP inventory documents (stock transfers, goods issue to production, and scrap issues). Source: <code>material_movements</code> (migration <code>010</code> + <code>etl/pull_inventory.php --what=movements</code>).</p>
         <?php if (!$hasMovements): ?>
             <p class="empty">No movement data loaded yet. Run migration <code>010_warehouse_inventory.sql</code>, map the columns with <code>etl/queries/inventory_discover_sqlsrv.sql</code>, then load with <code>php etl/pull_inventory.php --what=movements --source=PRIMSBM</code>.</p>
@@ -473,7 +476,7 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
     </section>
 
     <section class="panel panel-wide">
-        <h2>Stock Split &mdash; Location / Product Type / Category</h2>
+        <h2>Stock Split &mdash; Location / Product Type / Category <?= SourceBadge::render('stock') ?></h2>
         <p class="panel-note">On-hand stock rolled up by <?= e(['location' => 'warehouse location', 'type' => 'product type (Fresh / Frozen / Dry)', 'category' => 'SAP item group'][$splitDim]) ?>. Product type and category come from the SAP item group (migration <code>013</code> + a <code>--what=stock</code> reload); unclassified stock shows as &ldquo;Unassigned&rdquo;.</p>
         <?php if (!$hasStockSplit): ?>
             <p class="empty">Not available yet. Run migration <code>013_stock_classification.sql</code>, then reload stock with <code>php etl/pull_inventory.php --what=stock --source=PRIMSBM</code>.</p>
@@ -515,9 +518,60 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
         <?php endif; ?>
     </section>
 
+    <section class="panel panel-wide">
+        <h2>Inventory Summary &mdash; Department &times; Location &times; Pallets <?= SourceBadge::render('stock') ?></h2>
+        <p class="panel-note">On-hand inventory rolled up by department (SAP item group) and warehouse location with distinct item and pallet counts. Use the Item search above to drill into specific materials. Departments come from the stock classification (migration <code>013</code>); unclassified stock shows as &ldquo;Unassigned&rdquo;.</p>
+        <?php if (!$hasStockSplit): ?>
+            <p class="empty">Not available yet. Run migration <code>013_stock_classification.sql</code>, then reload stock with <code>php etl/pull_inventory.php --what=stock --source=PRIMSBM</code>.</p>
+        <?php else: ?>
+            <?php
+                // Department subtotals for the rollup rows.
+                $deptTotals = [];
+                foreach ($invSummaryRows as $r) {
+                    $d = (string) $r['department'];
+                    if (!isset($deptTotals[$d])) {
+                        $deptTotals[$d] = ['items' => 0, 'on_hand' => 0.0, 'pallets' => 0.0, 'locations' => 0];
+                    }
+                    $deptTotals[$d]['items'] += (int) $r['items'];
+                    $deptTotals[$d]['on_hand'] += (float) $r['on_hand'];
+                    $deptTotals[$d]['pallets'] += (float) $r['pallets'];
+                    $deptTotals[$d]['locations']++;
+                }
+            ?>
+            <div class="lpn-scroll">
+            <table>
+                <thead><tr><th>Department</th><th>Location</th><th class="num">Items</th><th class="num">On Hand</th><th class="num">Pallets</th></tr></thead>
+                <tbody>
+                <?php $prevDept = null; foreach ($invSummaryRows as $r): ?>
+                    <?php if ($r['department'] !== $prevDept): $prevDept = $r['department']; $t = $deptTotals[(string) $r['department']]; ?>
+                    <tr style="font-weight:600;background:rgba(0,0,0,.04)">
+                        <td><?= e($r['department']) ?></td>
+                        <td><span class="muted"><?= num($t['locations']) ?> location<?= $t['locations'] === 1 ? '' : 's' ?></span></td>
+                        <td class="num"><?= num($t['items']) ?></td>
+                        <td class="num"><?= num($t['on_hand']) ?></td>
+                        <td class="num"><?= pallets($t['pallets']) ?></td>
+                    </tr>
+                    <?php endif; ?>
+                    <tr>
+                        <td></td>
+                        <td><?= e($r['warehouse']) ?></td>
+                        <td class="num"><?= num($r['items']) ?></td>
+                        <td class="num"><?= num($r['on_hand']) ?></td>
+                        <td class="num"><?= pallets($r['pallets']) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if ($invSummaryRows === []): ?>
+                    <tr><td colspan="5" class="empty">No stock matches the current filters.</td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
+            </div>
+        <?php endif; ?>
+    </section>
+
     <div class="grid">
         <section class="panel">
-            <h2>Stock on Hand &mdash; Material &times; Warehouse</h2>
+            <h2>Stock on Hand &mdash; Material &times; Warehouse <?= SourceBadge::render('stock') ?></h2>
             <p class="panel-note">On-hand quantity per item per warehouse. Source: <code>warehouse_stock</code> (OITW + OITM) via <code>etl/pull_inventory.php --what=stock</code>.</p>
             <?php if (!$hasStock): ?>
                 <p class="empty">No stock loaded yet. Run migration <code>010</code>, then <code>php etl/pull_inventory.php --what=stock --source=PRIMSBM</code>.</p>
@@ -545,7 +599,7 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
         </section>
 
         <section class="panel">
-            <h2>Packaging &mdash; Case / Bundle / Bag per Pallet</h2>
+            <h2>Packaging &mdash; Case / Bundle / Bag per Pallet <?= SourceBadge::render('packaging') ?></h2>
             <p class="panel-note">UoM conversion per material. Source: <code>material_packaging</code> (OITM UoM + Beas pallet master).</p>
             <?php if (!$hasPackaging): ?>
                 <p class="empty">No packaging data loaded yet. Run migration <code>010</code>, then <code>php etl/pull_inventory.php --what=packaging --source=PRIMSBM</code>.</p>
@@ -574,7 +628,7 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
     </div>
 
     <section class="panel panel-wide">
-        <h2>Aged Material by Warehouse <span class="pill info">SCRUM-14</span></h2>
+        <h2>Aged Material by Warehouse <span class="pill info">SCRUM-14</span> <?= SourceBadge::render('batches') ?></h2>
         <p class="panel-note">Age buckets from batch admission/expiry. <strong>% Aged</strong> = batches over 90 days &divide; total. Source: <code>inventory_batches</code> (OBTN + OIBT) via <code>etl/pull_inventory.php --what=batches</code>.</p>
         <?php if (!$hasBatches): ?>
             <p class="empty">No batch data loaded yet. Run migration <code>010</code>, map columns with <code>etl/queries/inventory_discover_sqlsrv.sql</code>, then <code>php etl/pull_inventory.php --what=batches --source=PRIMSBM</code>.</p>
@@ -619,7 +673,7 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
 
     <?php if ($hasBatches): ?>
     <section class="panel panel-wide">
-        <h2>Aged-Out Material List</h2>
+        <h2>Aged-Out Material List <?= SourceBadge::render('batches') ?></h2>
         <p class="panel-note">Batches past the 90-day / expiry threshold, oldest first &mdash; the disposal / rotation worklist.</p>
         <div class="lpn-scroll">
         <table>
@@ -648,7 +702,7 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
     <?php endif; ?>
 
     <section class="panel panel-wide">
-        <h2>LPN &mdash; Pallet License Plates</h2>
+        <h2>LPN &mdash; Pallet License Plates <?= SourceBadge::render('lpn') ?></h2>
         <p class="panel-note">Live pallet detail (License Plate Numbers) from the WMS &mdash; contents, batch, bin location and status &mdash; to support the warehouse team. Filter by warehouse/item above; use the search box for an LPN, batch or bin. Source: Beas WMS pallet master via <code>lpn_pallets</code> (migration <code>008</code> + <code>etl/pull_lpn.php</code>).</p>
 
         <?php if (!$hasLpn): ?>

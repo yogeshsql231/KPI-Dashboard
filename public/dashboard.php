@@ -18,6 +18,7 @@ require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/DeliveryRepository.php';
 require_once __DIR__ . '/../src/DeliveryFilters.php';
 require_once __DIR__ . '/../src/WarehouseInventoryRepository.php';
+require_once __DIR__ . '/../src/SourceBadge.php';
 
 Auth::requireDepartment('delivery');
 $canSeeFinancials = Auth::isCLevel();
@@ -211,6 +212,7 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
         <div class="alert"><?= e($error) ?></div>
     <?php else: ?>
 
+    <p class="panel-note">Order &amp; fulfilment KPIs <?= SourceBadge::render('fulfilment') ?> &mdash; "Delivered" is the SAP delivery-note quantity, not the invoiced quantity.</p>
     <section class="cards">
         <div class="card neutral">
             <div class="card-label">Total Orders</div>
@@ -268,7 +270,7 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
     </section>
 
     <section class="panel">
-        <h2>Stock Stage Tracking</h2>
+        <h2>Stock Stage Tracking <?= SourceBadge::render('movements') ?></h2>
         <p class="panel-note">Where stock sits across the lifecycle — on-hand raw stock and finished goods from the inventory cache (<code>etl/pull_inventory.php</code>); staging, production and waste movements from <code>material_movements</code> over the selected date range.</p>
         <div class="flow">
             <div class="flow-step whs"><div class="fs-k">On-Hand Stock</div><div class="fs-v"><?= num($stockStages['on_hand'] ?? null) ?></div><div class="fs-sub">all warehouses</div></div>
@@ -284,7 +286,7 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
     </section>
 
     <section class="panel">
-        <h2>Estimated vs Actual Production Usage</h2>
+        <h2>Estimated vs Actual Production Usage <?= SourceBadge::render('production') ?></h2>
         <p class="panel-note">Planned component consumption on production orders vs what was actually issued (<code>production_usage</code> cache from SAP OWOR/WOR1, refreshed by <code>etl/pull_inventory.php --what=production</code>). Positive variance = over-consumption vs plan.</p>
         <?php if ($prodUsage === null): ?>
             <p class="panel-note">No production usage data yet — run migration 012 and the production ETL.</p>
@@ -323,7 +325,7 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
 
     <div class="grid">
         <section class="panel">
-            <h2>Fulfilment by Date</h2>
+            <h2>Fulfilment by Date <?= SourceBadge::render('fulfilment') ?></h2>
             <table>
                 <thead>
                     <tr><th>Date</th><th class="num">Orders</th><th class="num">Ordered</th><th class="num">Delivered</th><th class="num">Fill Rate</th><th class="num">OTIF</th></tr>
@@ -347,7 +349,7 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
         </section>
 
         <section class="panel">
-            <h2>Fulfilment by Warehouse</h2>
+            <h2>Fulfilment by Warehouse <?= SourceBadge::render('fulfilment') ?></h2>
             <table>
                 <thead><tr><th>Warehouse</th><th class="num">Lines</th><th class="num">Ordered</th><th class="num">Delivered</th><th class="num">Fill Rate</th></tr></thead>
                 <tbody>
@@ -368,7 +370,7 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
         </section>
 
         <section class="panel">
-            <h2>Top Customers by Delivered Qty</h2>
+            <h2>Top Customers by Delivered Qty <?= SourceBadge::render('delivered') ?></h2>
             <table>
                 <thead><tr><th>Customer</th><th class="num">Delivered</th><th class="num">Fill Rate</th></tr></thead>
                 <tbody>
@@ -387,7 +389,7 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
         </section>
 
         <section class="panel">
-            <h2>Zero-Delivery Lines</h2>
+            <h2>Zero-Delivery Lines <?= SourceBadge::render('delivered') ?></h2>
             <table>
                 <thead><tr><th>SO</th><th>PO</th><th>Customer</th><th>Item</th><th>Description</th><th class="num">Ordered</th><th>Pick Status</th></tr></thead>
                 <tbody>

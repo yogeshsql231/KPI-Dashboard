@@ -16,6 +16,7 @@ require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/AlertRepository.php';
+require_once __DIR__ . '/../src/SourceBadge.php';
 
 Auth::requireDepartment('audit');
 $canSeeFinancials = Auth::isCLevel();
@@ -132,7 +133,7 @@ try {
     </p>
 
     <section class="panel panel-wide">
-        <h2>Open Alerts</h2>
+        <h2>Open Alerts <?= SourceBadge::render('alerts') ?></h2>
         <table>
             <thead><tr><th>Severity</th><th>Alert</th><th>Category</th><th>Reference</th><th class="num">Seen</th><th>Since</th></tr></thead>
             <tbody>
@@ -155,7 +156,7 @@ try {
 
     <div class="grid">
         <section class="panel">
-            <h2>Operational Readings &mdash; Flagged</h2>
+            <h2>Operational Readings &mdash; Flagged <?= SourceBadge::render('readings') ?></h2>
             <p class="panel-note">Silo / batch-master readings out of range or past expiry. Source: SAP Beas / PRIMSBM via <code>operational_readings</code> (migration <code>009</code> + <code>etl/pull_readings.php</code>).</p>
             <?php if (!$hasReadings): ?>
                 <p class="empty">No operational readings loaded yet. Confirm the source columns with <code>etl/queries/readings_discover_sqlsrv.sql</code>, then load with <code>php etl/pull_readings.php --source=PRIMSBM</code>.</p>

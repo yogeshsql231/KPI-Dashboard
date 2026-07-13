@@ -29,6 +29,7 @@ require_once __DIR__ . '/../src/ComplaintRepository.php';
 require_once __DIR__ . '/../src/PaymentRepository.php';
 require_once __DIR__ . '/../src/LpnRepository.php';
 require_once __DIR__ . '/../src/DeliveryFilters.php';
+require_once __DIR__ . '/../src/SourceBadge.php';
 
 Auth::requireDepartment('overview');
 $canSeeFinancials = Auth::isCLevel();
@@ -430,7 +431,7 @@ $chartData = [
         <div class="g2">
             <div class="ovcard">
                 <div class="ptop">
-                    <div class="eyebrow" style="margin:0">🏭 Pallets by warehouse location</div>
+                    <div class="eyebrow" style="margin:0">🏭 Pallets by warehouse location <?= SourceBadge::render('lpn') ?></div>
                     <div class="vtoggle"><button type="button" class="on" id="vLoaves" onclick="setPView('loaves')">Loaves</button><button type="button" id="vBars" onclick="setPView('bars')">Bars</button></div>
                 </div>
                 <?php if ($hasLpn && $pallets !== []): ?>
@@ -447,7 +448,7 @@ $chartData = [
                 <?php endif; ?>
             </div>
             <div class="ovcard">
-                <div class="eyebrow">📈 Sales performance (monthly<?= $showMoney ? ' $' : ' orders' ?> vs 3-mo avg)</div>
+                <div class="eyebrow">📈 Sales performance (monthly<?= $showMoney ? ' $' : ' orders' ?> vs 3-mo avg) <?= SourceBadge::render('ordered') ?></div>
                 <div id="salesChart"></div>
             </div>
         </div>
@@ -457,7 +458,7 @@ $chartData = [
         <div class="handle" draggable="true"><span class="grip">⠿</span><span>Customers &amp; Payments</span></div>
         <div class="g2">
             <div class="ovcard bl">
-                <div class="eyebrow">👥 Top customers<?= $showMoney ? ' (SO value)' : ' (orders)' ?></div>
+                <div class="eyebrow">👥 Top customers<?= $showMoney ? ' (SO value)' : ' (orders)' ?> <?= SourceBadge::render('ordered') ?></div>
                 <?php
                 $maxCust = 0.0;
                 foreach ($topCust as $c) {
@@ -476,7 +477,7 @@ $chartData = [
                 <?php if ($topCust === []): ?><p class="ovempty">No orders in the selected range.</p><?php endif; ?>
             </div>
             <div class="ovcard lp">
-                <div class="eyebrow">⚠️ Late payment tracker</div>
+                <div class="eyebrow">⚠️ Late payment tracker <?= SourceBadge::render('invoiced') ?></div>
                 <?php if ($canSeeFinancials): ?>
                     <?php foreach ($latePayers as $p): ?>
                     <div class="row">
@@ -554,7 +555,7 @@ $chartData = [
         <div class="handle" draggable="true"><span class="grip">⠿</span><span>Financial Impact Analytics</span></div>
         <div class="g2">
             <div class="ovcard">
-                <div class="ptop"><div class="eyebrow" style="margin:0">📉 Late delivery vs late payment</div>
+                <div class="ptop"><div class="eyebrow" style="margin:0">📉 Late delivery vs late payment <?= SourceBadge::render('delivered') ?> <?= SourceBadge::render('invoiced') ?></div>
                 <span style="font-size:10px;text-transform:uppercase;letter-spacing:.2em;color:var(--ov-dim)">click a month to inspect</span></div>
                 <?php if ($corr === []): ?>
                     <p class="ovempty">No data in the selected range.</p>
@@ -578,7 +579,7 @@ $chartData = [
         <div class="handle" draggable="true"><span class="grip">⠿</span><span>Customer Insights</span></div>
         <div class="g2">
             <div class="ovcard">
-                <div class="eyebrow">💬 Complaints by category</div>
+                <div class="eyebrow">💬 Complaints by category <?= SourceBadge::render('complaints') ?></div>
                 <?php if ($reasonTotal > 0): ?>
                     <div class="donutwrap">
                         <svg width="110" height="110" viewBox="0 0 110 110" id="donut"></svg>
