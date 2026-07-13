@@ -1,13 +1,13 @@
 ---
 name: testing-kpi-dashboard
-description: Test the KPI Dashboard PHP pages (Overview, Delivery, Warehouse, Customer Service, Audit) locally end-to-end. Use when verifying filter, panel, or ETL-related UI changes.
+description: Test the KPI Dashboard PHP pages (Overview, Delivery, Warehouse, Customer Service, Procurement, Audit) locally end-to-end. Use when verifying filter, panel, or ETL-related UI changes.
 ---
 
 # Testing the KPI Dashboard locally
 
 ## Setup
 1. Start MySQL: `sudo service mysql start`. Local DB: `kpi_dashboard`, user `kpi_app`, password `kpi_local_pw` (dev-only). If the DB is missing, apply `sql/*.sql` then `sql/migrations/*.sql` in order, and seed with the sample-data scripts used in prior sessions (see repo history / `/home/ubuntu/attachments/gen_*seed*.py` if present).
-2. Serve: `php -S 127.0.0.1:8090 -t public` (run in background). Pages: `overview.php`, `dashboard.php` (Delivery), `warehouse.php`, `dashboard_cs.php` (Customer Service), `audit.php`.
+2. Serve: `php -S 127.0.0.1:8090 -t public` (run in background). Pages: `overview.php`, `dashboard.php` (Delivery), `warehouse.php`, `dashboard_cs.php` (Customer Service), `procurement.php`, `audit.php`.
 3. Lint: `php -l <file>` on every changed PHP file (no composer lint/test suite exists).
 
 ## Key facts that make testing fast
@@ -76,6 +76,27 @@ description: Test the KPI Dashboard PHP pages (Overview, Delivery, Warehouse, Cu
 - Item-master rules (migration 015): seed one `warehouse_stock` row with empty description/type/category, `pallets=NULL`, no packaging/capacity match; for `item_master_stale`, `UPDATE warehouse_stock SET refreshed_at = NOW() - INTERVAL 200 HOUR` (restore with `= NOW()` afterwards — the update hits ALL rows).
 - Fast pre-check before browser testing: `php -r "...new AlertRepository(Database::connection()); foreach ($r->evaluate() as $f) ..."` prints findings without touching alert_events.
 - Local `mysql -u root` may be denied (auth_socket); use `sudo mysql kpi_dashboard` instead.
+
+## Order-level OTIF widget (SCRUM-86) specifics
+- Order-level OTIF (Overview tile, CS "OTIF by Order" card) = `MIN(otif_flag) GROUP BY sales_order` (Delivery view) / `GROUP BY COALESCE(NULLIF(so_docentry,''), po_number)` (shipments view) — it will legitimately read LOWER than the line-level `AVG(otif_flag)` rate; don't flag the mismatch as a bug.
+- DB parity: `SELECT COUNT(*), SUM(a) FROM (SELECT sales_order, MIN(otif_flag) a FROM vw_delivery_lines WHERE otif_flag IS NOT NULL [AND warehouse=...] GROUP BY sales_order) x`.
+- The CS card hides itself (own try/catch) when migration 011 (`so_docentry` on `vw_order_shipment_kpi`) isn't applied — a missing card may mean a missing migration, not broken code.
+- Overview RAG thresholds: green ≥95%, gold ≥85%, red below (tile spark `data-color`); seed data is typically all-red, so verify color logic from the value + `data-color` attr rather than expecting green.
+
+## Order Cycle Time (SCRUM-87) specifics
+- Requires migration 017 (`delivery_date` on `delivery_lines` + re-created view). Tile degrades to "apply migration 017 + re-run delivery ETL" when missing — that hint is the graceful-degradation path, not a bug.
+- Seed data likely has NULL `delivery_date` (only the PRODHANA ETL populates it); seed it locally, e.g. `UPDATE delivery_lines SET delivery_date = DATE_ADD(posting_date, INTERVAL 1+FLOOR(RAND()*7) DAY) WHERE delivered_qty > 0` before testing.
+- DB parity (Overview): `SELECT COUNT(*), AVG(d) FROM (SELECT sales_order, DATEDIFF(MAX(delivery_date), MIN(posting_date)) d FROM vw_delivery_lines WHERE otif_flag IS NOT NULL AND delivery_date IS NOT NULL AND posting_date IS NOT NULL [AND warehouse=...] GROUP BY sales_order) x`.
+- CS card uses `vw_order_shipment_kpi` (`DATEDIFF(MAX(actual_date), MIN(order_date))` per order key) — a different source than the Overview tile, so its avg will differ; not a mismatch bug.
+- The tile has `invert=true`: a RISING cycle-time delta renders red (▲ in red is correct here).
+
+## Supplier OTIF / Procurement page (SCRUM-88) specifics
+- Requires migration 018 (`po_lines` + `vw_po_lines`). The page shows a deployment hint when the cache is empty — that's graceful degradation, not a bug.
+- Whole-PO semantics: `MIN(otif_flag) GROUP BY po_number`; cancelled POs have `otif_flag NULL` and are excluded from both numerator and denominator. Adversarial seed set: include one multi-line PO (must count once), one cancelled PO (denominator must shrink), one late, one short-received, one unreceived.
+- DB parity: `SELECT COUNT(*), SUM(a) FROM (SELECT po_number, MIN(otif_flag) a FROM vw_po_lines WHERE otif_flag IS NOT NULL [AND std_supplier=... AND posting_date>=...] GROUP BY po_number) x`.
+- On-time rule is `receipt_date <= due_date + 1 day` (last receipt = `MAX(PDN1.DocDate)`); both the grace day and last-vs-first receipt are provisional pending Raj's confirmation — if numbers look off vs. business expectation, check those rules first.
+- Source is SAP B1 `OPOR/POR1 + OPDN/PDN1` (goods receipts linked via `BaseType=22`), NOT ECC `EKKO/EKPO` even if a ticket mentions them.
+- Seeded local test rows stay in the VM's MySQL only; the user's box starts empty until `etl/pull_po.php --via=PRODHANA` runs there.
 
 ## Good adversarial test pattern
 1. Load page with no filters, note baseline totals (e.g. Delivered Qty card).
