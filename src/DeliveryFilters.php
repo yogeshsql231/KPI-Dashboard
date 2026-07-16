@@ -162,6 +162,25 @@ final class DeliveryFilters
     }
 
     /**
+     * Site group a warehouse name belongs to — the PHP-side twin of
+     * warehouseCondition(), for grouping already-fetched rows.
+     */
+    public static function warehouseGroup(string $name): string
+    {
+        $n = strtolower($name);
+        if (strpos($n, 'newark') !== false) {
+            return 'Newark';
+        }
+        if (strpos($n, 'clifton') !== false || strpos($n, 'cliffton') !== false) {
+            return 'Clifton';
+        }
+        if (strpos($n, 'brooklyn') !== false) {
+            return 'Brooklyn';
+        }
+        return 'Others';
+    }
+
+    /**
      * Keep the date range in chronological order. If both ends are supplied
      * and the user entered them backwards (from later than to), swap them so
      * the "from <= posting_date <= to" clause still selects the intended
