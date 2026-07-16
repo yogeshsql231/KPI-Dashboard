@@ -544,7 +544,7 @@ $chartData = [
     <div class="sec" data-id="araging">
         <div class="handle" draggable="true"><span class="grip">⚠</span><span>A/R Aging (open invoices)</span></div>
         <div class="g2">
-            <div class="ovcard">
+            <div class="ovcard bl">
                 <div class="eyebrow">⏳ A/R aging — open invoices by days past due (as of today) <?= SourceBadge::render('invoiced') ?></div>
                 <?php
                 $agingTotalInv = 0;
