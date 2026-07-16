@@ -83,6 +83,7 @@
 .locrow .ltot{font-size:10px;color:var(--ov-dim);font-variant-numeric:tabular-nums;}
 .pbar{display:flex;height:14px;border-radius:4px;overflow:hidden;background:var(--ov-bg);}
 .pbar div{min-width:2px;}
+.ptypes{margin-top:3px;font-size:11px;color:var(--ov-muted,#5C5F6A);}
 .pdetail{max-height:0;opacity:0;overflow:hidden;transition:.3s ease-out;}
 .pdetail.show{max-height:110px;opacity:1;margin-top:14px;}
 .pdetail .in{padding-top:14px;border-top:1px solid var(--ov-border);display:flex;gap:32px;align-items:center;}

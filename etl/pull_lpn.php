@@ -91,13 +91,15 @@ if ($printSql) {
 /** Text columns copied through verbatim (nullified when empty). */
 $textCols = [
     'lpn', 'status', 'warehouse', 'bin_location', 'item_code',
-    'item_description', 'batch_number', 'unit_of_measure',
+    'item_description', 'item_type', 'batch_number', 'unit_of_measure',
 ];
 /** Date columns normalised to YYYY-MM-DD. */
 $dateCols = ['received_date', 'expiry_date'];
 /** Numeric columns. */
-$numCols = ['quantity'];
-$expected = array_merge(['source_key'], $textCols, $dateCols, $numCols);
+$numCols = ['quantity', 'pallet_value'];
+/** Newer columns tolerated as absent so older custom queries keep working. */
+$optional = ['item_type', 'pallet_value'];
+$expected = array_diff(array_merge(['source_key'], $textCols, $dateCols, $numCols), $optional);
 $allCols  = array_merge($textCols, $dateCols, $numCols);
 
 echo "[etl] source=$source  query=$queryFile" . ($dryRun ? '  (dry-run)' : '') . "\n";

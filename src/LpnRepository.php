@@ -119,7 +119,12 @@ final class LpnRepository
                     COALESCE(SUM(is_expired), 0) AS expired,
                     SUM(CASE WHEN received_date IS NOT NULL
                               AND received_date < DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-                             THEN 1 ELSE 0 END)  AS aged_30d
+                             THEN 1 ELSE 0 END)  AS aged_30d,
+                    SUM(CASE WHEN item_type = 'Raw' THEN 1 ELSE 0 END)      AS raw_pallets,
+                    SUM(CASE WHEN item_type = 'Finished' THEN 1 ELSE 0 END) AS fg_pallets,
+                    COALESCE(SUM(CASE WHEN item_type = 'Raw' THEN pallet_value END), 0)      AS raw_value,
+                    COALESCE(SUM(CASE WHEN item_type = 'Finished' THEN pallet_value END), 0) AS fg_value,
+                    COALESCE(SUM(pallet_value), 0) AS total_value
              FROM vw_lpn_pallets
              WHERE $where
              GROUP BY std_warehouse, COALESCE(NULLIF(std_status, ''), 'Unknown')

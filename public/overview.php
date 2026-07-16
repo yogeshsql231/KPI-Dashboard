@@ -264,6 +264,11 @@ foreach ($palletRows as $r) {
     ];
     $pallets[$w]['total'] = ($pallets[$w]['total'] ?? 0) + (int) $r['pallets'];
     $pallets[$w]['aged']  = ($pallets[$w]['aged'] ?? 0) + (int) $r['aged_30d'];
+    $pallets[$w]['raw']      = ($pallets[$w]['raw'] ?? 0) + (int) ($r['raw_pallets'] ?? 0);
+    $pallets[$w]['fg']       = ($pallets[$w]['fg'] ?? 0) + (int) ($r['fg_pallets'] ?? 0);
+    $pallets[$w]['rawVal']   = ($pallets[$w]['rawVal'] ?? 0) + (float) ($r['raw_value'] ?? 0);
+    $pallets[$w]['fgVal']    = ($pallets[$w]['fgVal'] ?? 0) + (float) ($r['fg_value'] ?? 0);
+    $pallets[$w]['totalVal'] = ($pallets[$w]['totalVal'] ?? 0) + (float) ($r['total_value'] ?? 0);
 }
 $groupTrend = [];
 foreach ($palletTrend as $r) {
@@ -492,7 +497,7 @@ $chartData = [
                     <div class="plegend" id="plegend"></div>
                     <div id="pbody"></div>
                     <div class="pdetail" id="pdetail"><div class="in">
-                        <div><div class="k" id="pdLoc"></div><div class="bignum" id="pdTot"></div></div>
+                        <div><div class="k" id="pdLoc"></div><div class="bignum" id="pdTot"></div><div id="pdSplit"></div></div>
                         <div><div class="k">Aged &gt;30 days</div><div class="bignum" id="pdAged"></div></div>
                         <div style="flex:1"><div class="k" style="margin-bottom:4px">6-week volume trend</div><div class="wtrend" id="pdTrend"></div></div>
                     </div></div>
@@ -760,19 +765,29 @@ $chartData = [
         if (!el) return;
         const max = Math.max(...locations.map((l) => palletData[l].total || 0), 1);
         el.innerHTML = locations.map((loc) => {
-            const tot = palletData[loc].total || 0;
+            const d = palletData[loc];
+            const tot = d.total || 0;
             return '<div class="locrow" data-loc="' + loc + '" style="opacity:' + (hoveredLoc && hoveredLoc !== loc ? 0.5 : 1) + ';transition:opacity 150ms"><div class="lr"><span class="lname">' + loc + '</span><span class="ltot">' + tot + ' pallets</span></div>' +
                 '<div class="pbar">' +
                 statuses.map((s, i) => {
                     const c = statusCount(loc, s);
                     return c ? '<div style="background:' + statusColor(s, i) + ';width:' + (c / max * 100) + '%" title="' + s + ': ' + c + ' pallets"></div>' : '';
                 }).join('') +
-                '</div></div>';
+                '</div>' + typeSplitLine(d) + '</div>';
         }).join('');
         el.querySelectorAll('.locrow').forEach((r) => {
             r.onmouseenter = () => { hoveredLoc = r.dataset.loc; showDetail(); };
             r.onmouseleave = () => { hoveredLoc = null; showDetail(); };
         });
+    }
+    // "X raw · Y finished goods" (+ $ values when loaded & visible) per group.
+    function typeSplitLine(d) {
+        if (!d || ((d.raw || 0) === 0 && (d.fg || 0) === 0)) return '';
+        const money = DATA.showMoney && (d.totalVal || 0) > 0;
+        const part = (n, v, label) => n + ' ' + label + (money ? ' (' + usdShort(v || 0) + ')' : '');
+        return '<div class="ptypes">' + part(d.raw || 0, d.rawVal, 'raw') + ' · ' +
+            part(d.fg || 0, d.fgVal, 'finished goods') +
+            (money ? ' · ' + usdShort(d.totalVal || 0) + ' total' : '') + '</div>';
     }
     function showDetail() {
         const detail = document.getElementById('pdetail');
@@ -783,6 +798,7 @@ $chartData = [
             const agedPct = d.total > 0 ? Math.round((d.aged || 0) / d.total * 100) : 0;
             document.getElementById('pdLoc').textContent = hoveredLoc + ' total';
             document.getElementById('pdTot').textContent = (d.total || 0) + ' pallets';
+            document.getElementById('pdSplit').innerHTML = typeSplitLine(d) || '<span style="font-size:10px;color:#5C5F6A">no raw/FG classification — rerun the LPN ETL</span>';
             const ag = document.getElementById('pdAged');
             ag.textContent = agedPct + '%';
             ag.classList.toggle('warn', agedPct > 15);
