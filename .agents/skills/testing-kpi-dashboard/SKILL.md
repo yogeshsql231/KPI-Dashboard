@@ -123,6 +123,12 @@ description: Test the KPI Dashboard PHP pages (Overview, Delivery, Warehouse, Cu
 - Shares the SCRUM-92 `inv_*` filters; zero on-hand rows (e.g. SESAME-10) are excluded from BOTH numerator and denominator. Never-moved rows (`last_movement NULL`) sort first with a "never moved" pill.
 - Adversarial seed: one old-movement slow row, one never-moved slow row, moving rows, an inactive slow candidate (must not appear), and a zero-on-hand row (must not inflate denominator).
 
+## Overview polish (SCRUM-111) specifics
+- Sales performance is a comparison chart: monthly bars + dashed 3-mo avg polyline with a `.chlegend` legend ("Monthly $ / 3-mo avg"). It intentionally ignores the page DATE filter (always trailing 12 months) while other filters apply; Growth vs late orders DOES honor dates via `monthlyPerformance($filters, true)`.
+- Fast filter-awareness check without hovering tiny SVG bars: `curl -s "<overview url with dates>" | grep -o '"growth":\[[^]]*\]'` — compare `orders`/`late` across two date ranges. `"perf"` is the 12-month series and should NOT change with dates.
+- Pallet widget hides housekeeping statuses (`Available`, `ALL`, `FreezerHold`, case-insensitive `$hiddenStatuses` in overview.php) from the legend/segments but still counts them in group totals and the "Consolidated: N pallets" line. Seed one row of each hidden status plus one visible (e.g. QCHold) under one warehouse: the group total must include hidden rows while the bar shows only the visible segment. Statuses may legitimately produce an empty bar with a non-zero total (all-hidden group) — not a bug.
+- Section `.handle` labels are styled as 16px bold headers but remain the drag handles — verify both appearance and drag still working.
+
 ## Good adversarial test pattern
 1. Load page with no filters, note baseline totals (e.g. Delivered Qty card).
 2. Apply one filter; assert totals change to a DB-verified value, not just "page loads".
