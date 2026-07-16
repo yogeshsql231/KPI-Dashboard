@@ -128,14 +128,37 @@ final class PaymentRepository
     public const AGING_BUCKETS = ['Current', '1–30', '31–60', '61–90', '90+'];
 
     /**
-     * AR aging snapshot of OPEN invoices (balance still owed), bucketed by
-     * days past due as of today. Point-in-time — ignores the page date range.
+     * AR aging of OPEN invoices (balance still owed), bucketed by days past
+     * due as of today. Buckets always age from CURDATE(), but the set of
+     * invoices honors the page filters: invoice_date within the date range,
+     * and (since invoices carry no warehouse) the warehouse filter matches
+     * customers who have orders in that warehouse group.
      *
      * @return array<string, array{invoices:int, open_amount:float}> keyed by bucket
      */
-    public function arAging(): array
+    public function arAging(?string $from = null, ?string $to = null, ?string $warehouse = null): array
     {
-        $rows = $this->pdo->query(
+        $conds = ['invoice_amount - paid_amount > 0.005'];
+        $params = [];
+        if ($from !== null && $from !== '') {
+            $conds[] = 'invoice_date >= ?';
+            $params[] = $from;
+        }
+        if ($to !== null && $to !== '') {
+            $conds[] = 'invoice_date <= ?';
+            $params[] = $to;
+        }
+        if ($warehouse !== null && $warehouse !== '') {
+            [$whSql, $whParams] = DeliveryFilters::warehouseCondition('d.warehouse', $warehouse);
+            $conds[] = "customer_code IS NOT NULL AND EXISTS (
+                SELECT 1 FROM delivery_lines d
+                WHERE d.customer_code = ar_payments.customer_code AND $whSql)";
+            foreach ($whParams as $p) {
+                $params[] = $p;
+            }
+        }
+        $where = implode(' AND ', $conds);
+        $stmt = $this->pdo->prepare(
             "SELECT
                 CASE WHEN due_date IS NULL OR DATEDIFF(CURDATE(), due_date) <= 0 THEN 'Current'
                      WHEN DATEDIFF(CURDATE(), due_date) <= 30 THEN '1–30'
@@ -145,9 +168,11 @@ final class PaymentRepository
                 COUNT(*)                                                     AS invoices,
                 COALESCE(SUM(invoice_amount - paid_amount), 0)               AS open_amount
              FROM ar_payments
-             WHERE invoice_amount - paid_amount > 0.005
+             WHERE $where
              GROUP BY bucket"
-        )->fetchAll();
+        );
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll();
         $out = [];
         foreach (self::AGING_BUCKETS as $b) {
             $out[$b] = ['invoices' => 0, 'open_amount' => 0.0];

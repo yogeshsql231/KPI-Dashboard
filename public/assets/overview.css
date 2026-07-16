@@ -56,7 +56,7 @@
 .ovcard{background:var(--ov-card);border:1px solid var(--ov-border);border-radius:8px;padding:20px;}
 .eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.14em;color:var(--ov-dim);margin-bottom:12px;display:flex;align-items:center;gap:8px;}
 
-/* ---- KPI tiles (hover reveal) ---- */
+/* ---- KPI tiles ---- */
 .tile{position:relative;overflow:hidden;transition:border-color .3s,box-shadow .3s;}
 .tile:hover{border-color:rgba(29,78,216,.5);box-shadow:0 0 0 1px rgba(29,78,216,.15);}
 .tile .top{display:flex;align-items:flex-start;justify-content:space-between;}
@@ -64,11 +64,7 @@
 .tile .val{margin-top:8px;font-size:30px;font-weight:600;font-variant-numeric:tabular-nums;}
 .tile .delta{font-size:12px;font-weight:500;}
 .tile .delta.pos{color:var(--ov-green);}.tile .delta.neg{color:var(--ov-red);}
-.tile .reveal{max-height:0;opacity:0;overflow:hidden;transition:.3s ease-out;margin-top:0;}
-.tile:hover .reveal{max-height:110px;opacity:1;margin-top:14px;}
 .tile .foot{margin-top:12px;font-size:10px;text-transform:uppercase;letter-spacing:.2em;color:var(--ov-dim);}
-.spark{display:flex;align-items:flex-end;gap:4px;height:70px;}
-.spark i{flex:1;border-radius:2px 2px 0 0;display:block;min-height:2px;}
 
 /* ---- pallets widget ---- */
 .ptop{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
@@ -83,15 +79,12 @@
 .locrow .ltot{font-size:10px;color:var(--ov-dim);font-variant-numeric:tabular-nums;}
 .pbar{display:flex;height:14px;border-radius:4px;overflow:hidden;background:var(--ov-bg);}
 .pbar div{min-width:2px;}
-.ptypes{margin-top:3px;font-size:11px;color:var(--ov-muted,#5C5F6A);}
 .pdetail{max-height:0;opacity:0;overflow:hidden;transition:.3s ease-out;}
 .pdetail.show{max-height:110px;opacity:1;margin-top:14px;}
 .pdetail .in{padding-top:14px;border-top:1px solid var(--ov-border);display:flex;gap:32px;align-items:center;}
 .pdetail .k{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--ov-mut);}
 .pdetail .bignum{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums;}
 .pdetail .warn{color:var(--ov-red);}
-.wtrend{display:flex;align-items:flex-end;gap:3px;height:30px;width:140px;}
-.wtrend i{flex:1;background:var(--ov-gold);border-radius:2px;display:block;min-height:2px;}
 .phint{margin-top:12px;font-size:10px;text-transform:uppercase;letter-spacing:.2em;color:var(--ov-dim);}
 .pempty{font-size:12px;color:var(--ov-mut);}
 

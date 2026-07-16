@@ -116,7 +116,7 @@ try {
     $latePayers = $payments->topLatePayers($filters->fromDate, $filters->toDate, 0, 5);
     $lateDelMonths = $repo->lateByMonth($filters);
     $latePayMonths = $payments->byMonth($filters->fromDate, $filters->toDate, 0);
-    $arAging = $payments->arAging();
+    $arAging = $payments->arAging($filters->fromDate, $filters->toDate, $filters->warehouse);
     $topOpenAr = $payments->topOpenAr(5);
 
     try {
@@ -172,7 +172,7 @@ function deltaPct(array $series): ?float
 $orderQty     = (float) ($ov['order_qty'] ?? 0);
 $deliveredPct = $orderQty > 0 ? round((float) ($ov['delivered_qty'] ?? 0) / $orderQty * 100) : null;
 
-// Weekly received-pallet totals (all warehouses) for the on-hand tile spark.
+// Weekly received-pallet totals (all warehouses) for the on-hand tile delta.
 $tOnHand = [];
 foreach ($palletTrend as $r) {
     $tOnHand[(string) $r['yw']] = ($tOnHand[(string) $r['yw']] ?? 0) + (int) $r['pallets'];
@@ -213,7 +213,6 @@ $tiles = [
             ? num($otif['otif_orders']) . ' of ' . num($otif['total_orders']) . ' orders on-time in-full'
             : 'no eligible orders in range',
         'delta' => deltaPct($tOtif),
-        'spark' => $tOtif,
         'color' => $otifColor,
     ],
     [
@@ -223,7 +222,6 @@ $tiles = [
             ? ($onHandSplit !== '' ? $onHandSplit : 'run the LPN ETL to populate')
             : 'run the LPN ETL to populate',
         'delta' => deltaPct($tOnHand),
-        'spark' => $tOnHand,
         'color' => 'var(--ov-gold)',
     ],
     [
@@ -231,7 +229,6 @@ $tiles = [
         'value' => num(round((float) ($ov['total_pallets'] ?? 0))),
         'sub'   => $deliveredPct === null ? 'no ordered units in range' : $deliveredPct . '% of ordered units delivered',
         'delta' => deltaPct($tPallets),
-        'spark' => $tPallets,
         'color' => 'var(--ov-green)',
     ],
     [
@@ -239,7 +236,6 @@ $tiles = [
         'value' => $showMoney ? moneyShort((float) $ov['order_amount']) : num($ov['total_so'] ?? 0),
         'sub'   => num($ov['total_so'] ?? 0) . ' sales orders',
         'delta' => deltaPct($showMoney ? $tAmount : $tOrders),
-        'spark' => $showMoney ? $tAmount : $tOrders,
         'color' => 'var(--ov-gold)',
     ],
     [
@@ -247,7 +243,6 @@ $tiles = [
         'value' => num($ov['total_po'] ?? 0),
         'sub'   => 'customer purchase orders',
         'delta' => deltaPct($tPos),
-        'spark' => $tPos,
         'color' => 'var(--ov-blue)',
     ],
 ];
@@ -264,20 +259,10 @@ foreach ($palletRows as $r) {
     ];
     $pallets[$w]['total'] = ($pallets[$w]['total'] ?? 0) + (int) $r['pallets'];
     $pallets[$w]['aged']  = ($pallets[$w]['aged'] ?? 0) + (int) $r['aged_30d'];
-    $pallets[$w]['raw']      = ($pallets[$w]['raw'] ?? 0) + (int) ($r['raw_pallets'] ?? 0);
-    $pallets[$w]['fg']       = ($pallets[$w]['fg'] ?? 0) + (int) ($r['fg_pallets'] ?? 0);
-    $pallets[$w]['rawVal']   = ($pallets[$w]['rawVal'] ?? 0) + (float) ($r['raw_value'] ?? 0);
-    $pallets[$w]['fgVal']    = ($pallets[$w]['fgVal'] ?? 0) + (float) ($r['fg_value'] ?? 0);
-    $pallets[$w]['totalVal'] = ($pallets[$w]['totalVal'] ?? 0) + (float) ($r['total_value'] ?? 0);
 }
-$groupTrend = [];
-foreach ($palletTrend as $r) {
-    $g = DeliveryFilters::warehouseGroup((string) $r['warehouse']);
-    $groupTrend[$g][(string) $r['yw']] = ($groupTrend[$g][(string) $r['yw']] ?? 0) + (int) $r['pallets'];
-}
-foreach ($groupTrend as $g => $byWeek) {
-    ksort($byWeek);
-    $pallets[$g]['trend'] = array_values($byWeek);
+$palletGrandTotal = 0;
+foreach ($pallets as $g) {
+    $palletGrandTotal += (int) ($g['total'] ?? 0);
 }
 $ordered = [];
 foreach (DeliveryFilters::WAREHOUSE_GROUPS as $g) {
@@ -379,7 +364,6 @@ $chartData = [
     'corr'           => $corr,
     'perf'           => $perf,
     'reasons'        => $reasons,
-    'sparkWeeks'     => $tWeeks,
     'divisions'      => $divisionPie,
     'layoutKey'      => $layoutKey,
 ];
@@ -479,8 +463,7 @@ $chartData = [
                     <span class="delta <?= $good ? 'pos' : 'neg' ?>"><?= $up ? '▲ +' : '▼ ' ?><?= e($t['delta']) ?>%</span>
                     <?php endif; ?>
                 </div>
-                <div class="reveal"><div class="spark" data-series="<?= e((string) json_encode(array_map('floatval', $t['spark']))) ?>" data-color="<?= e($t['color']) ?>"></div></div>
-                <div class="foot"><?= e($t['sub']) ?> · <span class="hoverfoot">hover for 8-week trend</span></div>
+                <div class="foot"><?= e($t['sub']) ?></div>
             </div>
             <?php endforeach; ?>
         </div>
@@ -497,11 +480,12 @@ $chartData = [
                     <div class="plegend" id="plegend"></div>
                     <div id="pbody"></div>
                     <div class="pdetail" id="pdetail"><div class="in">
-                        <div><div class="k" id="pdLoc"></div><div class="bignum" id="pdTot"></div><div id="pdSplit"></div></div>
+                        <div><div class="k" id="pdLoc"></div><div class="bignum" id="pdTot"></div></div>
                         <div><div class="k">Aged &gt;30 days</div><div class="bignum" id="pdAged"></div></div>
-                        <div style="flex:1"><div class="k" style="margin-bottom:4px">6-week volume trend</div><div class="wtrend" id="pdTrend"></div></div>
                     </div></div>
-                    <div class="phint" id="phint">hover a row to inspect · pallet $ values populate once pallet valuation data is loaded</div>
+                    <div class="phint" id="phint">Consolidated: <?= num($palletGrandTotal) ?> pallets per the applied filters · hover a row to inspect</div>
+                <?php elseif ($hasLpn): ?>
+                    <p class="pempty">No pallets match the applied filters.</p>
                 <?php else: ?>
                     <p class="pempty">No LPN pallet data loaded yet. Run migration <code>008_lpn_pallets.sql</code> and <code>php etl/pull_lpn.php</code> to populate this widget.</p>
                 <?php endif; ?>
@@ -583,7 +567,7 @@ $chartData = [
                         <span class="amt"><?= (int) $b['invoices'] ?> inv<?= $canSeeFinancials ? ' · ' . e(moneyShort((float) $b['open_amount'])) : '' ?></span>
                     </div>
                     <?php endforeach; ?>
-                    <p class="phint">Total open A/R: <?= $agingTotalInv ?> invoices<?= $canSeeFinancials ? ' · ' . e(moneyShort($agingTotalAmt)) : '' ?> · snapshot as of today, independent of the date filter</p>
+                    <p class="phint">Total open A/R: <?= $agingTotalInv ?> invoices<?= $canSeeFinancials ? ' · ' . e(moneyShort($agingTotalAmt)) : '' ?> · open balances aged as of today, invoices per the applied filters</p>
                 <?php else: ?>
                     <p class="ovempty"><?= $hasPayments ? 'No open (unpaid) invoices in the A/R cache.' : 'Populates once the A/R payment ETL loads ar_payments (migration 006 + etl/pull_payments.php).' ?></p>
                 <?php endif; ?>
@@ -730,16 +714,6 @@ $chartData = [
     const usd = (v) => '$' + Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 });
     const usdShort = (v) => Math.abs(v) >= 1e6 ? '$' + (v / 1e6).toFixed(1) + 'M' : (Math.abs(v) >= 1e3 ? '$' + Math.round(v / 1e3) + 'K' : usd(v));
 
-    // ---- KPI tile sparklines (revealed on hover) --------------------------
-    document.querySelectorAll('.spark[data-series]').forEach((el) => {
-        const s = JSON.parse(el.dataset.series || '[]');
-        const color = el.dataset.color || GOLD;
-        const mx = Math.max(...s, 1);
-        el.innerHTML = s.length
-            ? s.map((v, i) => '<i style="height:' + Math.max(3, v / mx * 100) + '%;background:' + color + ';opacity:' + (0.5 + (i / s.length) * 0.5) + '" title="' + (DATA.sparkWeeks[i] || '') + ': ' + Number(v).toLocaleString() + '"></i>').join('')
-            : '<span class="ovempty">no recent activity</span>';
-    });
-
     // ---- Pallets by warehouse location (stacked horizontal bars) ----------
     const palletData = DATA.pallets || {};
     const locations = Object.keys(palletData);
@@ -773,21 +747,12 @@ $chartData = [
                     const c = statusCount(loc, s);
                     return c ? '<div style="background:' + statusColor(s, i) + ';width:' + (c / max * 100) + '%" title="' + s + ': ' + c + ' pallets"></div>' : '';
                 }).join('') +
-                '</div>' + typeSplitLine(d) + '</div>';
+                '</div></div>';
         }).join('');
         el.querySelectorAll('.locrow').forEach((r) => {
             r.onmouseenter = () => { hoveredLoc = r.dataset.loc; showDetail(); };
             r.onmouseleave = () => { hoveredLoc = null; showDetail(); };
         });
-    }
-    // "X raw · Y finished goods" (+ $ values when loaded & visible) per group.
-    function typeSplitLine(d) {
-        if (!d || ((d.raw || 0) === 0 && (d.fg || 0) === 0)) return '';
-        const money = DATA.showMoney && (d.totalVal || 0) > 0;
-        const part = (n, v, label) => n + ' ' + label + (money ? ' (' + usdShort(v || 0) + ')' : '');
-        return '<div class="ptypes">' + part(d.raw || 0, d.rawVal, 'raw') + ' · ' +
-            part(d.fg || 0, d.fgVal, 'finished goods') +
-            (money ? ' · ' + usdShort(d.totalVal || 0) + ' total' : '') + '</div>';
     }
     function showDetail() {
         const detail = document.getElementById('pdetail');
@@ -798,15 +763,9 @@ $chartData = [
             const agedPct = d.total > 0 ? Math.round((d.aged || 0) / d.total * 100) : 0;
             document.getElementById('pdLoc').textContent = hoveredLoc + ' total';
             document.getElementById('pdTot').textContent = (d.total || 0) + ' pallets';
-            document.getElementById('pdSplit').innerHTML = typeSplitLine(d) || '<span style="font-size:10px;color:#5C5F6A">no raw/FG classification — rerun the LPN ETL</span>';
             const ag = document.getElementById('pdAged');
             ag.textContent = agedPct + '%';
             ag.classList.toggle('warn', agedPct > 15);
-            const tr = d.trend || [];
-            const mx = Math.max(...tr, 1);
-            document.getElementById('pdTrend').innerHTML = tr.length
-                ? tr.map((v, i) => '<i style="height:' + Math.max(4, v / mx * 100) + '%;opacity:' + (0.7 + i / tr.length * 0.3) + '"></i>').join('')
-                : '<span style="font-size:10px;color:#5C5F6A">no received-date data</span>';
         }
         renderPallets();
     }
