@@ -50,7 +50,7 @@ final class SourceBadge
             'Stockout Frequency = active SKUs that hit zero on-hand during the period ÷ active SKUs, from daily on-hand snapshots.'],
         'production' => ['sap', 'OWOR/WOR1 → production_usage',
             'Planned vs. actually issued component quantities on production orders.'],
-        'lpn' => ['beas', '@BMM_PALLETMASTER/@BMM_BINDETAIL → lpn_pallets',
+        'lpn' => ['beas', '@BMM_BINDETAIL/OBTN → lpn_pallets',
             'Live pallet License Plate Numbers from the Beas warehouse management add-on.'],
         'complaints' => ['api', 'REST insert API → customer_complaints',
             'Customer complaints entered through the intake API (external quality system) — not from SAP.'],
