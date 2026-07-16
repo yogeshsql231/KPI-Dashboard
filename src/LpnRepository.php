@@ -65,11 +65,11 @@ final class LpnRepository
         [$where, $params] = $this->clause($f);
         $stmt = $this->pdo->prepare(
             "SELECT
-                 COUNT(*)                              AS pallets,
+                 COUNT(DISTINCT lpn)                   AS pallets,
                  COUNT(DISTINCT std_warehouse)         AS warehouses,
                  COUNT(DISTINCT item_code)             AS items,
                  COALESCE(SUM(quantity), 0)            AS total_qty,
-                 COALESCE(SUM(is_expired), 0)          AS expired
+                 COUNT(DISTINCT CASE WHEN is_expired = 1 THEN lpn END) AS expired
              FROM vw_lpn_pallets
              WHERE $where"
         );
@@ -90,9 +90,9 @@ final class LpnRepository
         [$where, $params] = $this->clause($f);
         $stmt = $this->pdo->prepare(
             "SELECT std_warehouse AS warehouse,
-                    COUNT(*)                     AS pallets,
+                    COUNT(DISTINCT lpn)          AS pallets,
                     COALESCE(SUM(quantity), 0)   AS total_qty,
-                    COALESCE(SUM(is_expired), 0) AS expired
+                    COUNT(DISTINCT CASE WHEN is_expired = 1 THEN lpn END) AS expired
              FROM vw_lpn_pallets
              WHERE $where
              GROUP BY std_warehouse
@@ -114,12 +114,12 @@ final class LpnRepository
         $stmt = $this->pdo->prepare(
             "SELECT std_warehouse AS warehouse,
                     COALESCE(NULLIF(std_status, ''), 'Unknown') AS status,
-                    COUNT(*)                     AS pallets,
+                    COUNT(DISTINCT lpn)          AS pallets,
                     COALESCE(SUM(quantity), 0)   AS total_qty,
-                    COALESCE(SUM(is_expired), 0) AS expired,
-                    SUM(CASE WHEN received_date IS NOT NULL
+                    COUNT(DISTINCT CASE WHEN is_expired = 1 THEN lpn END) AS expired,
+                    COUNT(DISTINCT CASE WHEN received_date IS NOT NULL
                               AND received_date < DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-                             THEN 1 ELSE 0 END)  AS aged_30d
+                             THEN lpn END)       AS aged_30d
              FROM vw_lpn_pallets
              WHERE $where
              GROUP BY std_warehouse, COALESCE(NULLIF(std_status, ''), 'Unknown')
@@ -142,7 +142,7 @@ final class LpnRepository
         $stmt = $this->pdo->prepare(
             "SELECT std_warehouse AS warehouse,
                     YEARWEEK(received_date, 3) AS yw,
-                    COUNT(*)                   AS pallets
+                    COUNT(DISTINCT lpn)        AS pallets
              FROM vw_lpn_pallets
              WHERE $where
                AND received_date IS NOT NULL
