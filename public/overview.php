@@ -87,7 +87,13 @@ $cycle = ['orders' => 0, 'avg_days' => null, 'min_days' => null, 'max_days' => n
 $cycleTrend = [];
 $hasCycle = false;
 
-$filters = DeliveryFilters::fromRequest($_GET);
+// Default to the last 7 days so the page loads with data immediately.
+$q = $_GET;
+if (($q['from_date'] ?? '') === '' && ($q['to_date'] ?? '') === '') {
+    $q['from_date'] = date('Y-m-d', strtotime('-6 days'));
+    $q['to_date'] = date('Y-m-d');
+}
+$filters = DeliveryFilters::fromRequest($q);
 // Filter hierarchy: warehouse only unlocks after a date range is chosen.
 $dateChosen = $filters->fromDate !== null && $filters->toDate !== null;
 
@@ -134,18 +140,9 @@ try {
         $hasLpn = false; // LPN migration not applied yet — widget shows setup hint.
     }
 
-    // Warehouse buttons: union of delivery + LPN warehouses.
-    $whOptions = $repo->options('warehouse', $filters);
-    try {
-        foreach ($lpn->options('warehouse') as $w) {
-            if (!in_array($w, $whOptions, true)) {
-                $whOptions[] = $w;
-            }
-        }
-    } catch (Throwable $ex) {
-        // LPN view missing — delivery warehouses only.
-    }
-    sort($whOptions);
+    // Fixed warehouse buttons: site groups (Clifton merges every naming
+    // variant; Others = everything not Newark/Clifton/Brooklyn).
+    $whOptions = DeliveryFilters::WAREHOUSE_GROUPS;
 
     $lastRefreshed = $repo->lastRefreshed();
 } catch (Throwable $ex) {
@@ -720,7 +717,7 @@ $chartData = [
     </div><!-- /sections -->
 
     <footer class="footer">
-        KPI Dashboard · Overview · source: SAP Business One via local cache<?php if ($lastRefreshed): ?> · data refreshed <?= e($lastRefreshed) ?><?php endif; ?>
+        KPI Dashboard · Overview · source: SAP Business One via local cache<?php if ($lastRefreshed): ?> · data refreshed <?= e(substr((string) $lastRefreshed, 0, 10)) ?><?php endif; ?>
     </footer>
 
     <script>
@@ -933,6 +930,7 @@ $chartData = [
         document.getElementById('whWrap').classList.toggle('locked', !ok);
         const lock = document.getElementById('whLock');
         if (lock) lock.style.display = ok ? 'none' : '';
+        if (ok) f.submit(); // reload data as soon as both dates are set
     }
     function pickWarehouse(btn, val) {
         const form = btn.form;
