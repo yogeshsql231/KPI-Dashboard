@@ -1,20 +1,10 @@
-/* Overview (v2 redesign, SCRUM-82) — light executive theme scoped to overview.php */
+/* Overview — matches the shared dashboard theme (style.css palette); topbar,
+   nav, alerts and notes come straight from style.css like every other page. */
 :root{
-  --ov-bg:#F5F6F8;--ov-card:#FFFFFF;--ov-border:#E2E4EA;--ov-txt:#1C1E24;--ov-txt2:#3A3D46;
-  --ov-mut:#6B6E78;--ov-dim:#8B8D98;--ov-faint:#C9CCD4;
-  --ov-gold:#B58620;--ov-green:#3E8760;--ov-red:#C05A4D;--ov-blue:#4A79A8;--ov-purple:#8460B3;
+  --ov-bg:#f4f6f9;--ov-card:#ffffff;--ov-border:#e5e7eb;--ov-txt:#1f2a37;--ov-txt2:#374151;
+  --ov-mut:#6b7280;--ov-dim:#9098a3;--ov-faint:#d1d5db;
+  --ov-gold:#1d4ed8;--ov-green:#16a34a;--ov-red:#dc2626;--ov-blue:#2563eb;--ov-purple:#7c3aed;
 }
-body.ov-dark{background:var(--ov-bg);color:var(--ov-txt);}
-body.ov-dark .topbar{background:var(--ov-card);border-bottom:1px solid var(--ov-border);box-shadow:none;}
-body.ov-dark .topbar .brand,body.ov-dark .topbar .subtitle{color:var(--ov-txt);}
-body.ov-dark .topnav a{color:var(--ov-mut);}
-body.ov-dark .topnav a:hover{color:var(--ov-txt);}
-body.ov-dark .topnav a.active{color:var(--ov-gold);}
-body.ov-dark .user-chip,body.ov-dark .user-name{color:var(--ov-txt2);}
-body.ov-dark .footer{color:var(--ov-dim);}
-body.ov-dark .alert{background:#FBEDEB;border:1px solid #E8C7C2;color:#9C3F33;}
-body.ov-dark .note{background:var(--ov-card);border:1px solid var(--ov-border);color:var(--ov-mut);}
-body.ov-dark code{background:var(--ov-border);color:var(--ov-txt2);}
 
 .ov-wrap{max-width:1240px;margin:0 auto;}
 .ov-hd{display:flex;align-items:baseline;justify-content:space-between;margin-top:6px;}
@@ -68,7 +58,7 @@ body.ov-dark code{background:var(--ov-border);color:var(--ov-txt2);}
 
 /* ---- KPI tiles (hover reveal) ---- */
 .tile{position:relative;overflow:hidden;transition:border-color .3s,box-shadow .3s;}
-.tile:hover{border-color:rgba(201,154,46,.5);box-shadow:0 0 0 1px rgba(201,154,46,.15);}
+.tile:hover{border-color:rgba(29,78,216,.5);box-shadow:0 0 0 1px rgba(29,78,216,.15);}
 .tile .top{display:flex;align-items:flex-start;justify-content:space-between;}
 .tile .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.14em;color:var(--ov-mut);}
 .tile .val{margin-top:8px;font-size:30px;font-weight:600;font-variant-numeric:tabular-nums;}
@@ -82,9 +72,6 @@ body.ov-dark code{background:var(--ov-border);color:var(--ov-txt2);}
 
 /* ---- pallets widget ---- */
 .ptop{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
-.vtoggle{display:flex;border:1px solid var(--ov-border);border-radius:6px;overflow:hidden;}
-.vtoggle button{background:none;border:0;color:var(--ov-mut);font-size:10px;text-transform:uppercase;letter-spacing:.1em;padding:5px 10px;cursor:pointer;}
-.vtoggle button.on{background:var(--ov-gold);color:#fff;}
 .plegend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;font-size:12px;}
 .plegend .li{display:flex;align-items:center;gap:7px;color:var(--ov-txt2);}
 .plegend b{width:8px;height:8px;border-radius:50%;display:inline-block;}
@@ -94,8 +81,8 @@ body.ov-dark code{background:var(--ov-border);color:var(--ov-txt2);}
 .locrow .lr{display:flex;justify-content:space-between;margin-bottom:6px;}
 .locrow .lname{font-size:12px;font-weight:500;color:var(--ov-txt2);}
 .locrow .ltot{font-size:10px;color:var(--ov-dim);font-variant-numeric:tabular-nums;}
-.loaves{display:flex;flex-wrap:wrap;gap:4px;align-items:center;}
-.unitnote{font-size:10px;color:var(--ov-faint);padding-top:4px;}
+.pbar{display:flex;height:14px;border-radius:4px;overflow:hidden;background:var(--ov-bg);}
+.pbar div{min-width:2px;}
 .pdetail{max-height:0;opacity:0;overflow:hidden;transition:.3s ease-out;}
 .pdetail.show{max-height:110px;opacity:1;margin-top:14px;}
 .pdetail .in{padding-top:14px;border-top:1px solid var(--ov-border);display:flex;gap:32px;align-items:center;}
@@ -154,6 +141,6 @@ svg.linechart text{font-family:inherit;}
 .divtable th{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--ov-dim);text-align:left;padding:4px 8px;border-bottom:1px solid var(--ov-border);}
 .divtable th.r,.divtable td.r{text-align:right;font-variant-numeric:tabular-nums;}
 .divtable td{padding:5px 8px;color:var(--ov-txt2);}
-.divtable tr.divrow td{background:#EEF0F4;color:var(--ov-txt);font-weight:600;border-top:1px solid var(--ov-border);}
+.divtable tr.divrow td{background:#eef2f7;color:var(--ov-txt);font-weight:600;border-top:1px solid var(--ov-border);}
 .divtable .dcount{font-weight:400;font-size:10px;color:var(--ov-mut);}
 .divtable tr.custrow td.cn{padding-left:22px;color:var(--ov-mut);}
