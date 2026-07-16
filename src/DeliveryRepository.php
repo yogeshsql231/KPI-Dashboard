@@ -545,7 +545,11 @@ final class DeliveryRepository
      */
     public function monthlyPerformance(DeliveryFilters $f): array
     {
-        [$where, $params] = $f->clause();
+        // Monthly trend vs a 3-month moving average needs several months of
+        // history, so it ignores the page date filter (the default range is
+        // only one week) and always charts the trailing 12 months. All other
+        // filters (warehouse, item, carrier...) still apply.
+        [$where, $params] = $f->clauseExcept('date');
         $stmt = $this->pdo->prepare(
             "SELECT
                 DATE_FORMAT(posting_date, '%Y-%m')  AS ym,
@@ -556,6 +560,7 @@ final class DeliveryRepository
                 COALESCE(SUM(delivered_qty), 0)     AS delivered_qty
              FROM vw_delivery_lines
              WHERE $where AND posting_date IS NOT NULL
+               AND posting_date >= DATE_SUB(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 11 MONTH)
              GROUP BY DATE_FORMAT(posting_date, '%Y-%m')
              ORDER BY ym"
         );

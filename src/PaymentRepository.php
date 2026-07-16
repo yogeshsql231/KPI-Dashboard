@@ -119,6 +119,66 @@ final class PaymentRepository
         return $stmt->fetchAll();
     }
 
+    /** Ordered aging bucket labels shared by arAging() and the Overview UI. */
+    public const AGING_BUCKETS = ['Current', '1–30', '31–60', '61–90', '90+'];
+
+    /**
+     * AR aging snapshot of OPEN invoices (balance still owed), bucketed by
+     * days past due as of today. Point-in-time — ignores the page date range.
+     *
+     * @return array<string, array{invoices:int, open_amount:float}> keyed by bucket
+     */
+    public function arAging(): array
+    {
+        $rows = $this->pdo->query(
+            "SELECT
+                CASE WHEN due_date IS NULL OR DATEDIFF(CURDATE(), due_date) <= 0 THEN 'Current'
+                     WHEN DATEDIFF(CURDATE(), due_date) <= 30 THEN '1–30'
+                     WHEN DATEDIFF(CURDATE(), due_date) <= 60 THEN '31–60'
+                     WHEN DATEDIFF(CURDATE(), due_date) <= 90 THEN '61–90'
+                     ELSE '90+' END                                          AS bucket,
+                COUNT(*)                                                     AS invoices,
+                COALESCE(SUM(invoice_amount - paid_amount), 0)               AS open_amount
+             FROM ar_payments
+             WHERE invoice_amount - paid_amount > 0.005
+             GROUP BY bucket"
+        )->fetchAll();
+        $out = [];
+        foreach (self::AGING_BUCKETS as $b) {
+            $out[$b] = ['invoices' => 0, 'open_amount' => 0.0];
+        }
+        foreach ($rows as $r) {
+            $out[(string) $r['bucket']] = [
+                'invoices'    => (int) $r['invoices'],
+                'open_amount' => (float) $r['open_amount'],
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Customers with the largest open A/R balance, oldest past-due first on ties.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function topOpenAr(int $limit = 5): array
+    {
+        $limit = max(1, min(100, $limit));
+        return $this->pdo->query(
+            "SELECT
+                COALESCE(NULLIF(customer_name, ''), customer_code, 'Unknown') AS customer,
+                COUNT(*)                                                      AS invoices,
+                COALESCE(SUM(invoice_amount - paid_amount), 0)                AS open_amount,
+                MAX(CASE WHEN due_date IS NOT NULL AND due_date < CURDATE()
+                         THEN DATEDIFF(CURDATE(), due_date) ELSE 0 END)       AS oldest_days_past_due
+             FROM ar_payments
+             WHERE invoice_amount - paid_amount > 0.005
+             GROUP BY COALESCE(NULLIF(customer_name, ''), customer_code, 'Unknown')
+             ORDER BY open_amount DESC, oldest_days_past_due DESC
+             LIMIT $limit"
+        )->fetchAll();
+    }
+
     /** True when the ar_payments cache has any rows (drives the empty-state UI). */
     public function hasData(): bool
     {

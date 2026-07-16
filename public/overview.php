@@ -70,6 +70,8 @@ $paySummary = [];
 $lateDelMonths = [];
 $latePayMonths = [];
 $hasPayments = false;
+$arAging = [];
+$topOpenAr = [];
 $complaintSummary = ['complaints' => 0, 'lost_amount' => 0];
 $complaintsByReason = [];
 $palletRows = [];
@@ -81,11 +83,14 @@ $whOptions = [];
 $lastRefreshed = null;
 $otif = ['total_orders' => 0, 'otif_orders' => 0, 'otif_rate' => null];
 $otifTrend = [];
-$cycle = ['orders' => 0, 'avg_days' => null, 'min_days' => null, 'max_days' => null];
-$cycleTrend = [];
-$hasCycle = false;
 
-$filters = DeliveryFilters::fromRequest($_GET);
+// Default to the last 7 days so the page loads with data immediately.
+$q = $_GET;
+if (($q['from_date'] ?? '') === '' && ($q['to_date'] ?? '') === '') {
+    $q['from_date'] = date('Y-m-d', strtotime('-6 days'));
+    $q['to_date'] = date('Y-m-d');
+}
+$filters = DeliveryFilters::fromRequest($q);
 // Filter hierarchy: warehouse only unlocks after a date range is chosen.
 $dateChosen = $filters->fromDate !== null && $filters->toDate !== null;
 
@@ -100,13 +105,6 @@ try {
     $trend = $repo->weeklyTrend($filters, 8);
     $otif = $repo->otifOrders($filters);
     $otifTrend = $repo->otifWeeklyTrend($filters, 8);
-    try {
-        $cycle = $repo->cycleTime($filters);
-        $cycleTrend = $repo->cycleTimeWeeklyTrend($filters, 8);
-        $hasCycle = true;
-    } catch (Throwable $ex) {
-        $hasCycle = false; // migration 017 (delivery_date) not applied yet
-    }
     $monthly = $repo->monthlyPerformance($filters);
     $topCust = $repo->customersByOrders($filters, 5);
     $divisionRows = $repo->byDivisionCustomer($filters);
@@ -118,6 +116,8 @@ try {
     $latePayers = $payments->topLatePayers($filters->fromDate, $filters->toDate, 0, 5);
     $lateDelMonths = $repo->lateByMonth($filters);
     $latePayMonths = $payments->byMonth($filters->fromDate, $filters->toDate, 0);
+    $arAging = $payments->arAging();
+    $topOpenAr = $payments->topOpenAr(5);
 
     try {
         $hasLpn = $lpn->hasData();
@@ -130,18 +130,9 @@ try {
         $hasLpn = false; // LPN migration not applied yet — widget shows setup hint.
     }
 
-    // Warehouse buttons: union of delivery + LPN warehouses.
-    $whOptions = $repo->options('warehouse', $filters);
-    try {
-        foreach ($lpn->options('warehouse') as $w) {
-            if (!in_array($w, $whOptions, true)) {
-                $whOptions[] = $w;
-            }
-        }
-    } catch (Throwable $ex) {
-        // LPN view missing — delivery warehouses only.
-    }
-    sort($whOptions);
+    // Fixed warehouse buttons: site groups (Clifton merges every naming
+    // variant; Others = everything not Newark/Clifton/Brooklyn).
+    $whOptions = DeliveryFilters::WAREHOUSE_GROUPS;
 
     $lastRefreshed = $repo->lastRefreshed();
 } catch (Throwable $ex) {
@@ -189,6 +180,20 @@ foreach ($palletTrend as $r) {
 ksort($tOnHand);
 $tOnHand = array_values($tOnHand);
 
+// Pallets-on-hand split by site group for the tile subtitle.
+$onHandByGroup = [];
+foreach ($palletRows as $r) {
+    $g = DeliveryFilters::warehouseGroup((string) $r['warehouse']);
+    $onHandByGroup[$g] = ($onHandByGroup[$g] ?? 0) + (int) $r['pallets'];
+}
+$onHandParts = [];
+foreach (DeliveryFilters::WAREHOUSE_GROUPS as $g) {
+    if (isset($onHandByGroup[$g])) {
+        $onHandParts[] = $g . ' ' . num($onHandByGroup[$g]);
+    }
+}
+$onHandSplit = implode(' · ', $onHandParts);
+
 // OTIF tile: RAG status color (green >= 95%, gold >= 85%, red below).
 $otifRate = $otif['otif_rate'];
 $tOtif = [];
@@ -199,13 +204,6 @@ $otifColor = 'var(--ov-dim)';
 if ($otifRate !== null) {
     $otifColor = $otifRate >= 0.95 ? 'var(--ov-green)' : ($otifRate >= 0.85 ? 'var(--ov-gold)' : 'var(--ov-red)');
 }
-
-// Cycle-time tile: avg days from SO entry to actual shipment, per order.
-$tCycle = [];
-foreach ($cycleTrend as $r) {
-    $tCycle[] = round((float) $r['avg_days'], 1);
-}
-$cycleAvg = $cycle['avg_days'];
 
 $tiles = [
     [
@@ -219,23 +217,10 @@ $tiles = [
         'color' => $otifColor,
     ],
     [
-        'label' => 'Cycle time',
-        'value' => $cycleAvg === null ? '—' : number_format($cycleAvg, 1) . 'd',
-        'sub'   => !$hasCycle
-            ? 'apply migration 017 + re-run delivery ETL'
-            : ($cycle['orders'] > 0
-                ? num($cycle['orders']) . ' shipped orders · SO entry → shipment'
-                : 'no shipped orders in range'),
-        'delta' => deltaPct($tCycle),
-        'spark' => $tCycle,
-        'color' => 'var(--ov-purple)',
-        'invert' => true, // shorter cycle time is better
-    ],
-    [
         'label' => 'Pallets on hand',
         'value' => $lpnSummary !== null ? num($lpnSummary['pallets'] ?? 0) : '—',
         'sub'   => $lpnSummary !== null
-            ? 'across ' . num($lpnSummary['warehouses'] ?? 0) . ' warehouses · ' . num($lpnSummary['items'] ?? 0) . ' items'
+            ? ($onHandSplit !== '' ? $onHandSplit : 'run the LPN ETL to populate')
             : 'run the LPN ETL to populate',
         'delta' => deltaPct($tOnHand),
         'spark' => $tOnHand,
@@ -267,21 +252,35 @@ $tiles = [
     ],
 ];
 
-// ---- Pallets by warehouse location ----------------------------------------
+// ---- Pallets by site group (Newark / Clifton / Brooklyn / Others) ----------
 $pallets = [];
 foreach ($palletRows as $r) {
-    $w = (string) $r['warehouse'];
+    $w = DeliveryFilters::warehouseGroup((string) $r['warehouse']);
     $s = (string) $r['status'];
+    $prev = $pallets[$w]['statuses'][$s] ?? ['c' => 0, 'qty' => 0.0];
     $pallets[$w]['statuses'][$s] = [
-        'c'   => (int) $r['pallets'],
-        'qty' => (float) $r['total_qty'],
+        'c'   => $prev['c'] + (int) $r['pallets'],
+        'qty' => $prev['qty'] + (float) $r['total_qty'],
     ];
     $pallets[$w]['total'] = ($pallets[$w]['total'] ?? 0) + (int) $r['pallets'];
     $pallets[$w]['aged']  = ($pallets[$w]['aged'] ?? 0) + (int) $r['aged_30d'];
 }
+$groupTrend = [];
 foreach ($palletTrend as $r) {
-    $pallets[(string) $r['warehouse']]['trend'][] = (int) $r['pallets'];
+    $g = DeliveryFilters::warehouseGroup((string) $r['warehouse']);
+    $groupTrend[$g][(string) $r['yw']] = ($groupTrend[$g][(string) $r['yw']] ?? 0) + (int) $r['pallets'];
 }
+foreach ($groupTrend as $g => $byWeek) {
+    ksort($byWeek);
+    $pallets[$g]['trend'] = array_values($byWeek);
+}
+$ordered = [];
+foreach (DeliveryFilters::WAREHOUSE_GROUPS as $g) {
+    if (isset($pallets[$g])) {
+        $ordered[$g] = $pallets[$g];
+    }
+}
+$pallets = $ordered;
 $palletStatuses = [];
 foreach ($palletRows as $r) {
     if (!in_array((string) $r['status'], $palletStatuses, true)) {
@@ -391,7 +390,7 @@ $chartData = [
     <link rel="stylesheet" href="assets/style.css">
     <link rel="stylesheet" href="assets/overview.css">
 </head>
-<body class="ov-dark">
+<body>
 <header class="topbar">
     <div class="brand">KPI Dashboard</div>
     <div class="subtitle">Overview</div>
@@ -462,7 +461,7 @@ $chartData = [
 
     <div class="sec" data-id="orders">
         <div class="handle" draggable="true"><span class="grip">⠿</span><span>Pallets &amp; Orders</span></div>
-        <div class="g6">
+        <div class="g5">
             <?php foreach ($tiles as $t): ?>
             <div class="ovcard tile">
                 <div class="top">
@@ -487,8 +486,7 @@ $chartData = [
         <div class="g2">
             <div class="ovcard">
                 <div class="ptop">
-                    <div class="eyebrow" style="margin:0">🏭 Pallets by warehouse location <?= SourceBadge::render('lpn') ?></div>
-                    <div class="vtoggle"><button type="button" class="on" id="vLoaves" onclick="setPView('loaves')">Loaves</button><button type="button" id="vBars" onclick="setPView('bars')">Bars</button></div>
+                    <div class="eyebrow" style="margin:0">🏭 Pallets by warehouse group <?= SourceBadge::render('lpn') ?></div>
                 </div>
                 <?php if ($hasLpn && $pallets !== []): ?>
                     <div class="plegend" id="plegend"></div>
@@ -546,6 +544,59 @@ $chartData = [
                     <?php endforeach; ?>
                     <?php if ($latePayers === []): ?>
                         <p class="ovempty"><?= $hasPayments ? 'No late payments in the selected range.' : 'Late-payment $ populate once the A/R payment ETL loads ar_payments (migration 006 + etl/pull_payments.php).' ?></p>
+                    <?php endif; ?>
+                <?php else: ?>
+                    <p class="ovempty">Restricted to C-level users.</p>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+
+    <div class="sec" data-id="araging">
+        <div class="handle" draggable="true"><span class="grip">⚠</span><span>A/R Aging (open invoices)</span></div>
+        <div class="g2">
+            <div class="ovcard">
+                <div class="eyebrow">⏳ A/R aging — open invoices by days past due (as of today) <?= SourceBadge::render('invoiced') ?></div>
+                <?php
+                $agingTotalInv = 0;
+                $agingTotalAmt = 0.0;
+                $agingMax = 0.0;
+                foreach ($arAging as $b) {
+                    $agingTotalInv += (int) $b['invoices'];
+                    $agingTotalAmt += (float) $b['open_amount'];
+                    $agingMax = max($agingMax, $canSeeFinancials ? (float) $b['open_amount'] : (float) $b['invoices']);
+                }
+                ?>
+                <?php if ($agingTotalInv > 0): ?>
+                    <?php foreach ($arAging as $label => $b):
+                        $v = $canSeeFinancials ? (float) $b['open_amount'] : (float) $b['invoices'];
+                        $w = $agingMax > 0 ? round($v / $agingMax * 100) : 0;
+                    ?>
+                    <div class="row">
+                        <span class="nm"><?= e($label) ?><?= $label === 'Current' ? ' (not yet due)' : 'd past due' ?></span>
+                        <div class="track"><div class="fill" style="width:<?= $w ?>%"></div></div>
+                        <span class="amt"><?= (int) $b['invoices'] ?> inv<?= $canSeeFinancials ? ' · ' . e(moneyShort((float) $b['open_amount'])) : '' ?></span>
+                    </div>
+                    <?php endforeach; ?>
+                    <p class="phint">Total open A/R: <?= $agingTotalInv ?> invoices<?= $canSeeFinancials ? ' · ' . e(moneyShort($agingTotalAmt)) : '' ?> · snapshot as of today, independent of the date filter</p>
+                <?php else: ?>
+                    <p class="ovempty"><?= $hasPayments ? 'No open (unpaid) invoices in the A/R cache.' : 'Populates once the A/R payment ETL loads ar_payments (migration 006 + etl/pull_payments.php).' ?></p>
+                <?php endif; ?>
+            </div>
+            <div class="ovcard lp">
+                <div class="eyebrow">🏦 Top open A/R balances <?= SourceBadge::render('invoiced') ?></div>
+                <?php if ($canSeeFinancials): ?>
+                    <?php foreach ($topOpenAr as $p): ?>
+                    <div class="row">
+                        <span><?= e($p['customer']) ?></span>
+                        <span>
+                            <span class="d"><?= (int) $p['oldest_days_past_due'] > 0 ? (int) $p['oldest_days_past_due'] . 'd past due' : 'current' ?></span>
+                            <span class="a"><?= e(moneyShort((float) $p['open_amount'])) ?></span>
+                        </span>
+                    </div>
+                    <?php endforeach; ?>
+                    <?php if ($topOpenAr === []): ?>
+                        <p class="ovempty">No open invoices — nothing owed.</p>
                     <?php endif; ?>
                 <?php else: ?>
                     <p class="ovempty">Restricted to C-level users.</p>
@@ -663,12 +714,12 @@ $chartData = [
     </div><!-- /sections -->
 
     <footer class="footer">
-        KPI Dashboard · Overview · source: SAP Business One via local cache<?php if ($lastRefreshed): ?> · data refreshed <?= e($lastRefreshed) ?><?php endif; ?>
+        KPI Dashboard · Overview · source: SAP Business One via local cache<?php if ($lastRefreshed): ?> · data refreshed <?= e(substr((string) $lastRefreshed, 0, 10)) ?><?php endif; ?>
     </footer>
 
     <script>
     const DATA = <?= json_encode($chartData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-    const GOLD = '#B58620', GREEN = '#3E8760', RED = '#C05A4D', BLUE = '#4A79A8', PURPLE = '#8460B3', DIM = '#8B8D98', FAINT = '#C9CCD4';
+    const GOLD = '#1d4ed8', GREEN = '#16a34a', RED = '#dc2626', BLUE = '#2563eb', PURPLE = '#7c3aed', DIM = '#9098a3', FAINT = '#d1d5db';
     const STATUS_COLORS = { 'Ready': GOLD, 'Waiting': '#8B8D98', 'Delivered': GREEN, 'In Stock': GOLD, 'Picked': BLUE, 'Shipped': GREEN, 'Expired': RED };
     const EXTRA_COLORS = [GOLD, BLUE, GREEN, PURPLE, RED, DIM];
     const usd = (v) => '$' + Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -684,17 +735,13 @@ $chartData = [
             : '<span class="ovempty">no recent activity</span>';
     });
 
-    // ---- Pallets by warehouse location (loaves / bars toggle) -------------
+    // ---- Pallets by warehouse location (stacked horizontal bars) ----------
     const palletData = DATA.pallets || {};
     const locations = Object.keys(palletData);
     const statuses = DATA.palletStatuses || [];
     const statusColor = (s, i) => STATUS_COLORS[s] || EXTRA_COLORS[i % EXTRA_COLORS.length];
-    const LOAF = 25;
-    let pview = 'loaves', hoveredLoc = null;
+    let hoveredLoc = null;
 
-    function loafSVG(color, op) {
-        return '<svg width="20" height="14" viewBox="0 0 24 16" style="opacity:' + op + ';transition:opacity 150ms"><path d="M2 12 C2 6 6 2 12 2 C18 2 22 6 22 12 C22 14 19 15 12 15 C5 15 2 14 2 12 Z" fill="' + color + '"/><path d="M8 4.5 L7 10.5 M12 3.5 L11.2 11 M16 4.5 L15 10.5" stroke="rgba(0,0,0,0.28)" stroke-width="1.1" stroke-linecap="round"/></svg>';
-    }
     function statusCount(loc, s) {
         const st = (palletData[loc] && palletData[loc].statuses) || {};
         return st[s] ? st[s].c : 0;
@@ -711,20 +758,17 @@ $chartData = [
     function renderPallets() {
         const el = document.getElementById('pbody');
         if (!el) return;
-        if (pview === 'loaves') {
-            el.innerHTML = locations.map((loc) => {
-                const tot = palletData[loc].total || 0;
-                return '<div class="locrow" data-loc="' + loc + '"><div class="lr"><span class="lname">' + loc + '</span><span class="ltot">' + tot + ' pallets</span></div><div class="loaves">' +
-                    statuses.map((s, i) => Array.from({ length: statusCount(loc, s) ? Math.max(1, Math.round(statusCount(loc, s) / LOAF)) : 0 }).map(() => loafSVG(statusColor(s, i), hoveredLoc && hoveredLoc !== loc ? 0.45 : 1)).join('')).join('') +
-                    '</div></div>';
-            }).join('') + '<div class="unitnote">each loaf ≈ ' + LOAF + ' pallets</div>';
-        } else {
-            const max = Math.max(...locations.map((l) => palletData[l].total || 0), 1);
-            el.innerHTML = '<div style="display:flex;align-items:flex-end;gap:40px;height:150px;padding:0 20px">' + locations.map((loc) =>
-                '<div class="locrow" data-loc="' + loc + '" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;opacity:' + (hoveredLoc && hoveredLoc !== loc ? 0.5 : 1) + '"><div style="display:flex;flex-direction:column-reverse;width:38px;height:120px">' +
-                statuses.map((s, i) => '<div style="background:' + statusColor(s, i) + ';height:' + (statusCount(loc, s) / max * 100) + '%"></div>').join('') +
-                '</div><span style="font-size:11px;color:#8B8D98">' + loc + '</span></div>').join('') + '</div>';
-        }
+        const max = Math.max(...locations.map((l) => palletData[l].total || 0), 1);
+        el.innerHTML = locations.map((loc) => {
+            const tot = palletData[loc].total || 0;
+            return '<div class="locrow" data-loc="' + loc + '" style="opacity:' + (hoveredLoc && hoveredLoc !== loc ? 0.5 : 1) + ';transition:opacity 150ms"><div class="lr"><span class="lname">' + loc + '</span><span class="ltot">' + tot + ' pallets</span></div>' +
+                '<div class="pbar">' +
+                statuses.map((s, i) => {
+                    const c = statusCount(loc, s);
+                    return c ? '<div style="background:' + statusColor(s, i) + ';width:' + (c / max * 100) + '%" title="' + s + ': ' + c + ' pallets"></div>' : '';
+                }).join('') +
+                '</div></div>';
+        }).join('');
         el.querySelectorAll('.locrow').forEach((r) => {
             r.onmouseenter = () => { hoveredLoc = r.dataset.loc; showDetail(); };
             r.onmouseleave = () => { hoveredLoc = null; showDetail(); };
@@ -750,14 +794,6 @@ $chartData = [
         }
         renderPallets();
     }
-    function setPView(v) {
-        pview = v;
-        const l = document.getElementById('vLoaves'), b = document.getElementById('vBars');
-        if (l) l.classList.toggle('on', v === 'loaves');
-        if (b) b.classList.toggle('on', v === 'bars');
-        renderPallets();
-        savePrefs();
-    }
     renderLegend();
     renderPallets();
 
@@ -775,8 +811,8 @@ $chartData = [
         el.innerHTML = '<svg class="linechart" viewBox="0 0 400 150" width="100%" height="150">' +
             [0.25, 0.6, 0.95].map((f) => '<line x1="0" y1="' + (H - BOT - f * (H - BOT - 14)) + '" x2="400" y2="' + (H - BOT - f * (H - BOT - 14)) + '" stroke="#E2E4EA"/>').join('') +
             (avgPts ? '<polyline points="' + avgPts + '" fill="none" stroke="#5C5F6A" stroke-width="1.5" stroke-dasharray="5 4"/>' : '') +
-            '<polyline points="' + pts + '" fill="none" stroke="#C99A2E" stroke-width="2.5"/>' +
-            '<g fill="#C99A2E">' + series.map((v, i) => '<circle cx="' + x(i) + '" cy="' + y(v) + '" r="3"><title>' + labels[i] + ': ' + (DATA.showMoney ? usdShort(v) : Number(v).toLocaleString()) + '</title></circle>').join('') + '</g>' +
+            '<polyline points="' + pts + '" fill="none" stroke="' + GOLD + '" stroke-width="2.5"/>' +
+            '<g fill="' + GOLD + '">' + series.map((v, i) => '<circle cx="' + x(i) + '" cy="' + y(v) + '" r="3"><title>' + labels[i] + ': ' + (DATA.showMoney ? usdShort(v) : Number(v).toLocaleString()) + '</title></circle>').join('') + '</g>' +
             '<g fill="#8B8D98" font-size="11" text-anchor="middle">' + labels.map((l, i) => '<text x="' + x(i) + '" y="' + (H - 6) + '">' + l + '</text>').join('') + '</g>' +
             '</svg>';
     }
@@ -876,6 +912,7 @@ $chartData = [
         document.getElementById('whWrap').classList.toggle('locked', !ok);
         const lock = document.getElementById('whLock');
         if (lock) lock.style.display = ok ? 'none' : '';
+        if (ok) f.submit(); // reload data as soon as both dates are set
     }
     function pickWarehouse(btn, val) {
         const form = btn.form;
@@ -909,8 +946,7 @@ $chartData = [
     function savePrefs() {
         try {
             localStorage.setItem(DATA.layoutKey, JSON.stringify({
-                order: [...cont.children].map((c) => c.dataset.id),
-                pview: pview
+                order: [...cont.children].map((c) => c.dataset.id)
             }));
         } catch (e) { /* storage unavailable */ }
         const n = document.getElementById('saveNote');
@@ -923,7 +959,6 @@ $chartData = [
             if (el) cont.appendChild(el);
         });
         try { localStorage.removeItem(DATA.layoutKey); } catch (e) { /* ignore */ }
-        if (pview !== 'loaves') setPView('loaves');
     }
     (function restorePrefs() {
         let saved = null;
@@ -935,13 +970,6 @@ $chartData = [
                 const el = cont.querySelector('[data-id="' + id + '"]');
                 if (el) cont.appendChild(el);
             });
-            if (s.pview && s.pview !== pview) {
-                pview = s.pview;
-                const l = document.getElementById('vLoaves'), b = document.getElementById('vBars');
-                if (l) l.classList.toggle('on', pview === 'loaves');
-                if (b) b.classList.toggle('on', pview === 'bars');
-                renderPallets();
-            }
         } catch (e) { /* corrupt state — ignore */ }
     })();
     </script>
