@@ -1,53 +1,53 @@
 -- ===========================================================================
 -- PRODHANA (SAP Business One on HANA) -> lpn_pallets source query.
 --
--- LPN = License Plate Number (pallet "license plate"). Beas WMS stores the
--- pallet header in "@BMM_PALLETMASTER" and the pallet contents (item / lot /
--- quantity per bin) in "@BMM_BINDETAIL", linked on
--- BINDETAIL."U_SCCNO" = PALLETMASTER."U_BMPALLETID" (verified against the
--- live DAMASCUS_BAKERY schema). Output column names match lpn_pallets exactly
--- so the ETL upserts straight in. READ-ONLY (SELECT) — never writes to SAP.
+-- LPN = License Plate Number (pallet "license plate"). Sourced from the Beas
+-- WMS bin detail "@BMM_BINDETAIL" (the same source as Rajesh's
+-- SP_2025BM_InventoryDetailsReport): one row per pallet (U_SCCNO) / item /
+-- lot / bin with a non-zero quantity, joined to OBTN for batch create/expiry
+-- dates and OITM/OITB for item description and group classification.
+-- Output column names match lpn_pallets exactly so the ETL upserts straight
+-- in. READ-ONLY (SELECT) — never writes to SAP.
 --
 -- Run through the SQL Server linked server (no direct HANA login needed):
 --   php etl/pull_lpn.php --source=PRIMSBM --query=etl/queries/prodhana_lpn.sql --via=PRODHANA
 -- ===========================================================================
 
 SELECT
-    P."U_BMPALLETID" || ':' || COALESCE(B."U_ITEMCODE", '') || ':' || COALESCE(B."U_LOTNO", '') || ':' || COALESCE(B."U_BINNO", '') AS source_key,
-    P."U_BMPALLETID"                                           AS lpn,
-    P."U_BMSTATUS"                                             AS status,
-    COALESCE(WH."WhsName", B."U_WHSCODE", P."U_BMLOCATION")    AS warehouse,
-    COALESCE(B."U_BINNO", P."U_BMBINNO")                       AS bin_location,
-    B."U_ITEMCODE"                                             AS item_code,
-    OI."ItemName"                                              AS item_description,
-    -- Raw vs finished-goods classification: SAP item group name first, then a
-    -- FG-warehouse fallback (Beas FG locations are prefixed "FG").
+    B."U_SCCNO" || ':' || COALESCE(B."U_ITEMCODE", '') || ':' || COALESCE(B."U_LOTNO", '') || ':' || COALESCE(B."U_BINNO", '') AS source_key,
+    TO_VARCHAR(B."U_SCCNO")                                    AS lpn,
+    TO_VARCHAR(B."U_INVENTORYTYPE")                            AS status,
+    TO_VARCHAR(COALESCE(WH."WhsName", B."U_WHSCODE"))          AS warehouse,
+    TO_VARCHAR(B."U_BINNO")                                    AS bin_location,
+    TO_VARCHAR(B."U_ITEMCODE")                                 AS item_code,
+    TO_VARCHAR(OI."ItemName")                                  AS item_description,
+    -- Classification by SAP item group code (101 Ingredients, 102 Package,
+    -- 103 Finished Goods), falling back to the group name.
     TO_VARCHAR(CASE
+        WHEN OI."ItmsGrpCod" = 101 THEN 'Raw'
+        WHEN OI."ItmsGrpCod" = 102 THEN 'Packaging'
+        WHEN OI."ItmsGrpCod" = 103 THEN 'Finished'
         WHEN LOWER(COALESCE(G."ItmsGrpNam", '')) LIKE '%raw%'
           OR LOWER(COALESCE(G."ItmsGrpNam", '')) LIKE '%ingredient%' THEN 'Raw'
-        WHEN LOWER(COALESCE(G."ItmsGrpNam", '')) LIKE '%finish%'
-          OR LOWER(COALESCE(G."ItmsGrpNam", '')) LIKE '%fg%'
-          OR UPPER(COALESCE(WH."WhsName", B."U_WHSCODE", P."U_BMLOCATION", '')) LIKE 'FG%' THEN 'Finished'
+        WHEN LOWER(COALESCE(G."ItmsGrpNam", '')) LIKE '%finish%' THEN 'Finished'
         ELSE 'Other'
     END)                                                       AS item_type,
-    COALESCE(B."U_LOTNO", P."U_BATCHNO")                       AS batch_number,
+    TO_VARCHAR(B."U_LOTNO")                                    AS batch_number,
     SUM(B."U_TOTALQTY")                                        AS quantity,
     SUM(B."U_TOTALQTY" * COALESCE(OI."AvgPrice", 0))           AS pallet_value,
-    OI."InvntryUom"                                            AS unit_of_measure,
-    P."U_INDATE"                                               AS received_date,
-    CAST(NULL AS DATE)                                         AS expiry_date
-FROM "DAMASCUS_BAKERY"."@BMM_PALLETMASTER" P
-    LEFT JOIN "DAMASCUS_BAKERY"."@BMM_BINDETAIL" B ON B."U_SCCNO" = P."U_BMPALLETID"
-    LEFT JOIN "DAMASCUS_BAKERY"."OWHS" WH ON WH."WhsCode" = COALESCE(B."U_WHSCODE", P."U_BMLOCATION")
+    TO_VARCHAR(OI."InvntryUom")                                AS unit_of_measure,
+    TO_DATE(BT."CreateDate")                                   AS received_date,
+    TO_DATE(BT."ExpDate")                                      AS expiry_date
+FROM "DAMASCUS_BAKERY"."@BMM_BINDETAIL" B
+    LEFT JOIN "DAMASCUS_BAKERY"."OBTN" BT ON BT."ItemCode" = B."U_ITEMCODE" AND BT."DistNumber" = B."U_LOTNO"
+    LEFT JOIN "DAMASCUS_BAKERY"."OWHS" WH ON WH."WhsCode" = B."U_WHSCODE"
     LEFT JOIN "DAMASCUS_BAKERY"."OITM" OI ON OI."ItemCode" = B."U_ITEMCODE"
     LEFT JOIN "DAMASCUS_BAKERY"."OITB" G ON G."ItmsGrpCod" = OI."ItmsGrpCod"
-WHERE COALESCE(P."Canceled", 'N') <> 'Y'
-  AND P."U_BMSTATUS" = 'AVAILABLE'
+WHERE B."U_TOTALQTY" <> 0
 GROUP BY
-    P."U_BMPALLETID", P."U_BMSTATUS",
-    WH."WhsName", B."U_WHSCODE", P."U_BMLOCATION",
-    B."U_BINNO", P."U_BMBINNO",
-    B."U_ITEMCODE", OI."ItemName", G."ItmsGrpNam",
-    B."U_LOTNO", P."U_BATCHNO",
-    OI."InvntryUom", P."U_INDATE"
-ORDER BY P."U_BMPALLETID"
+    B."U_SCCNO", B."U_INVENTORYTYPE",
+    WH."WhsName", B."U_WHSCODE", B."U_BINNO",
+    B."U_ITEMCODE", OI."ItemName", OI."ItmsGrpCod", G."ItmsGrpNam",
+    B."U_LOTNO", OI."InvntryUom",
+    BT."CreateDate", BT."ExpDate"
+ORDER BY B."U_SCCNO"
