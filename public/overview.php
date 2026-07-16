@@ -106,6 +106,7 @@ try {
     $otif = $repo->otifOrders($filters);
     $otifTrend = $repo->otifWeeklyTrend($filters, 8);
     $monthly = $repo->monthlyPerformance($filters);
+    $monthlyFiltered = $repo->monthlyPerformance($filters, true);
     $topCust = $repo->customersByOrders($filters, 5);
     $divisionRows = $repo->byDivisionCustomer($filters);
     $complaintSummary = $complaints->summary($filters);
@@ -248,15 +249,21 @@ $tiles = [
 ];
 
 // ---- Pallets by site group (Newark / Clifton / Brooklyn / Others) ----------
+// Housekeeping statuses are hidden from the legend/bar segments; their
+// pallets still count toward the group and consolidated totals.
+$hiddenStatuses = ['available', 'all', 'freezerhold'];
 $pallets = [];
 foreach ($palletRows as $r) {
     $w = DeliveryFilters::warehouseGroup((string) $r['warehouse']);
     $s = (string) $r['status'];
-    $prev = $pallets[$w]['statuses'][$s] ?? ['c' => 0, 'qty' => 0.0];
-    $pallets[$w]['statuses'][$s] = [
-        'c'   => $prev['c'] + (int) $r['pallets'],
-        'qty' => $prev['qty'] + (float) $r['total_qty'],
-    ];
+    if (!in_array(strtolower($s), $hiddenStatuses, true)) {
+        $prev = $pallets[$w]['statuses'][$s] ?? ['c' => 0, 'qty' => 0.0];
+        $pallets[$w]['statuses'][$s] = [
+            'c'   => $prev['c'] + (int) $r['pallets'],
+            'qty' => $prev['qty'] + (float) $r['total_qty'],
+        ];
+    }
+    $pallets[$w]['statuses'] = $pallets[$w]['statuses'] ?? [];
     $pallets[$w]['total'] = ($pallets[$w]['total'] ?? 0) + (int) $r['pallets'];
     $pallets[$w]['aged']  = ($pallets[$w]['aged'] ?? 0) + (int) $r['aged_30d'];
 }
@@ -273,8 +280,12 @@ foreach (DeliveryFilters::WAREHOUSE_GROUPS as $g) {
 $pallets = $ordered;
 $palletStatuses = [];
 foreach ($palletRows as $r) {
-    if (!in_array((string) $r['status'], $palletStatuses, true)) {
-        $palletStatuses[] = (string) $r['status'];
+    $s = (string) $r['status'];
+    if (in_array(strtolower($s), $hiddenStatuses, true)) {
+        continue;
+    }
+    if (!in_array($s, $palletStatuses, true)) {
+        $palletStatuses[] = $s;
     }
 }
 
@@ -308,6 +319,17 @@ $perf = [];
 foreach ($monthly as $r) {
     $m = (string) $r['ym'];
     $perf[] = [
+        'label'  => date('M y', strtotime($m . '-01')),
+        'amount' => (float) $r['order_amount'],
+        'orders' => (int) $r['orders'],
+    ];
+}
+
+// Growth vs late orders follows the page date range (plus all other filters).
+$growth = [];
+foreach ($monthlyFiltered as $r) {
+    $m = (string) $r['ym'];
+    $growth[] = [
         'label'  => date('M y', strtotime($m . '-01')),
         'amount' => (float) $r['order_amount'],
         'orders' => (int) $r['orders'],
@@ -363,6 +385,7 @@ $chartData = [
     'palletStatuses' => $palletStatuses,
     'corr'           => $corr,
     'perf'           => $perf,
+    'growth'         => $growth,
     'reasons'        => $reasons,
     'divisions'      => $divisionPie,
     'layoutKey'      => $layoutKey,
@@ -733,7 +756,7 @@ $chartData = [
         el.innerHTML = statuses.map((s, i) => {
             const t = locations.reduce((a, l) => a + statusCount(l, s), 0);
             const q = locations.reduce((a, l) => a + ((palletData[l].statuses[s] || { qty: 0 }).qty || 0), 0);
-            return '<span class="li"><b style="background:' + statusColor(s, i) + '"></b>' + s + ' <span class="n">' + t + '</span> <span class="v">· ' + Number(q).toLocaleString() + ' units</span></span>';
+            return '<span class="li"><b style="background:' + statusColor(s, i) + '"></b>' + s + ' <span class="n">' + Number(t).toLocaleString() + '</span> <span class="v">· ' + Number(q).toLocaleString() + ' units</span></span>';
         }).join('');
     }
     function renderPallets() {
@@ -743,11 +766,11 @@ $chartData = [
         el.innerHTML = locations.map((loc) => {
             const d = palletData[loc];
             const tot = d.total || 0;
-            return '<div class="locrow" data-loc="' + loc + '" style="opacity:' + (hoveredLoc && hoveredLoc !== loc ? 0.5 : 1) + ';transition:opacity 150ms"><div class="lr"><span class="lname">' + loc + '</span><span class="ltot">' + tot + ' pallets</span></div>' +
+            return '<div class="locrow" data-loc="' + loc + '" style="opacity:' + (hoveredLoc && hoveredLoc !== loc ? 0.5 : 1) + ';transition:opacity 150ms"><div class="lr"><span class="lname">' + loc + '</span><span class="ltot">' + Number(tot).toLocaleString() + ' pallets</span></div>' +
                 '<div class="pbar">' +
                 statuses.map((s, i) => {
                     const c = statusCount(loc, s);
-                    return c ? '<div style="background:' + statusColor(s, i) + ';width:' + (c / max * 100) + '%" title="' + s + ': ' + c + ' pallets"></div>' : '';
+                    return c ? '<div style="background:' + statusColor(s, i) + ';width:' + (c / max * 100) + '%" title="' + s + ': ' + Number(c).toLocaleString() + ' pallets"></div>' : '';
                 }).join('') +
                 '</div></div>';
         }).join('');
@@ -764,7 +787,7 @@ $chartData = [
         if (d) {
             const agedPct = d.total > 0 ? Math.round((d.aged || 0) / d.total * 100) : 0;
             document.getElementById('pdLoc').textContent = hoveredLoc + ' total';
-            document.getElementById('pdTot').textContent = (d.total || 0) + ' pallets';
+            document.getElementById('pdTot').textContent = Number(d.total || 0).toLocaleString() + ' pallets';
             const ag = document.getElementById('pdAged');
             ag.textContent = agedPct + '%';
             ag.classList.toggle('warn', agedPct > 15);
@@ -775,21 +798,23 @@ $chartData = [
     renderPallets();
 
     // ---- SVG line/bar charts (sales performance, growth vs late) ----------
-    function lineChart(elId, labels, series, movingAvg) {
+    // Comparison chart: monthly bars vs a 3-mo moving-average line (one scale).
+    function comparisonChart(elId, labels, series, movingAvg) {
         const el = document.getElementById(elId);
         if (!el) return;
         if (!labels.length) { el.innerHTML = '<p class="ovempty">No data in the selected range.</p>'; return; }
         const W = 400, H = 150, PAD = 24, BOT = 26;
+        const BW = Math.min(22, (W - PAD * 2) / labels.length * 0.6);
         const mx = Math.max(...series, ...movingAvg.filter((v) => v !== null), 1);
         const x = (i) => labels.length === 1 ? W / 2 : PAD + i * ((W - PAD * 2) / (labels.length - 1));
         const y = (v) => H - BOT - (v / mx) * (H - BOT - 14);
-        const pts = series.map((v, i) => x(i) + ',' + y(v)).join(' ');
         const avgPts = movingAvg.map((v, i) => v === null ? null : x(i) + ',' + y(v)).filter(Boolean).join(' ');
-        el.innerHTML = '<svg class="linechart" viewBox="0 0 400 150" width="100%" height="150">' +
+        el.innerHTML = '<div class="chlegend"><span><b style="background:' + GOLD + '"></b>Monthly ' + (DATA.showMoney ? '$' : 'orders') + '</span><span><b class="ln"></b>3-mo avg</span></div>' +
+            '<svg class="linechart" viewBox="0 0 400 150" width="100%" height="150">' +
             [0.25, 0.6, 0.95].map((f) => '<line x1="0" y1="' + (H - BOT - f * (H - BOT - 14)) + '" x2="400" y2="' + (H - BOT - f * (H - BOT - 14)) + '" stroke="#E2E4EA"/>').join('') +
-            (avgPts ? '<polyline points="' + avgPts + '" fill="none" stroke="#5C5F6A" stroke-width="1.5" stroke-dasharray="5 4"/>' : '') +
-            '<polyline points="' + pts + '" fill="none" stroke="' + GOLD + '" stroke-width="2.5"/>' +
-            '<g fill="' + GOLD + '">' + series.map((v, i) => '<circle cx="' + x(i) + '" cy="' + y(v) + '" r="3"><title>' + labels[i] + ': ' + (DATA.showMoney ? usdShort(v) : Number(v).toLocaleString()) + '</title></circle>').join('') + '</g>' +
+            '<g fill="' + GOLD + '" opacity="0.85">' + series.map((v, i) => '<rect x="' + (x(i) - BW / 2) + '" y="' + y(v) + '" width="' + BW + '" height="' + Math.max(1, H - BOT - y(v)) + '" rx="3"><title>' + labels[i] + ': ' + (DATA.showMoney ? usdShort(v) : Number(v).toLocaleString()) + '</title></rect>').join('') + '</g>' +
+            (avgPts ? '<polyline points="' + avgPts + '" fill="none" stroke="#5C5F6A" stroke-width="2" stroke-dasharray="5 4"/>' : '') +
+            '<g fill="#5C5F6A">' + movingAvg.map((v, i) => v === null ? '' : '<circle cx="' + x(i) + '" cy="' + y(v) + '" r="3"><title>' + labels[i] + ' 3-mo avg: ' + (DATA.showMoney ? usdShort(v) : Math.round(v).toLocaleString()) + '</title></circle>').join('') + '</g>' +
             '<g fill="#8B8D98" font-size="11" text-anchor="middle">' + labels.map((l, i) => '<text x="' + x(i) + '" y="' + (H - 6) + '">' + l + '</text>').join('') + '</g>' +
             '</svg>';
     }
@@ -806,7 +831,7 @@ $chartData = [
             [0.25, 0.6, 0.95].map((f) => '<line x1="0" y1="' + (H - BOT - f * (H - BOT - 14)) + '" x2="400" y2="' + (H - BOT - f * (H - BOT - 14)) + '" stroke="#E2E4EA"/>').join('') +
             '<g fill="#2E3440">' + bars.map((v, i) => '<rect x="' + (x(i) - BW / 2) + '" y="' + (H - BOT - by(v)) + '" width="' + BW + '" height="' + by(v) + '" rx="3"><title>' + labels[i] + ': ' + (DATA.showMoney ? usdShort(v) : Number(v).toLocaleString() + ' orders') + '</title></rect>').join('') + '</g>' +
             '<polyline points="' + line.map((v, i) => x(i) + ',' + ly(v)).join(' ') + '" fill="none" stroke="#D5766A" stroke-width="2"/>' +
-            '<g fill="#D5766A">' + line.map((v, i) => '<circle cx="' + x(i) + '" cy="' + ly(v) + '" r="3"><title>' + labels[i] + ': ' + v + ' late lines</title></circle>').join('') + '</g>' +
+            '<g fill="#D5766A">' + line.map((v, i) => '<circle cx="' + x(i) + '" cy="' + ly(v) + '" r="3"><title>' + labels[i] + ': ' + Number(v).toLocaleString() + ' late lines</title></circle>').join('') + '</g>' +
             '<g fill="#8B8D98" font-size="11" text-anchor="middle">' + labels.map((l, i) => '<text x="' + x(i) + '" y="' + (H - 6) + '">' + l + '</text>').join('') + '</g>' +
             '</svg>';
     }
@@ -814,8 +839,9 @@ $chartData = [
     const pLabels = perf.map((r) => r.label);
     const pSeries = perf.map((r) => DATA.showMoney ? r.amount : r.orders);
     const pAvg = pSeries.map((_, i) => i < 2 ? null : (pSeries[i] + pSeries[i - 1] + pSeries[i - 2]) / 3);
-    lineChart('salesChart', pLabels, pSeries, pAvg);
-    growthChart('growthChart', pLabels, pSeries, perf.map((r) => r.late));
+    comparisonChart('salesChart', pLabels, pSeries, pAvg);
+    const growth = DATA.growth || [];
+    growthChart('growthChart', growth.map((r) => r.label), growth.map((r) => DATA.showMoney ? r.amount : r.orders), growth.map((r) => r.late));
 
     // ---- Correlation: click a month to drill into driving customers -------
     const corr = DATA.corr || [];
@@ -832,7 +858,7 @@ $chartData = [
         el.querySelectorAll('.cmon').forEach((c) => c.onclick = () => { sel = c.dataset.m; renderCorr(); });
         const row = corr.find((r) => r.ym === sel);
         if (!row) return;
-        document.getElementById('corrT').innerHTML = '<b>' + row.label + '</b> — ' + row.late + ' of ' + row.total + ' lines delivered late' +
+        document.getElementById('corrT').innerHTML = '<b>' + row.label + '</b> — ' + Number(row.late).toLocaleString() + ' of ' + Number(row.total).toLocaleString() + ' lines delivered late' +
             (row.pct === null ? '' : ', ' + row.pct + '% of invoiced $ received after due date');
         document.getElementById('corrChips').innerHTML = row.drill.length
             ? row.drill.map((c) => '<span class="chip">' + c.customer + ' <span>· ' + usdShort(c.value) + (c.days !== null ? ' · ' + c.days + 'd' : '') + '</span></span>').join('')
