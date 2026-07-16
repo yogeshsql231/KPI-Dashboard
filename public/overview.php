@@ -117,7 +117,7 @@ try {
     $lateDelMonths = $repo->lateByMonth($filters);
     $latePayMonths = $payments->byMonth($filters->fromDate, $filters->toDate, 0);
     $arAging = $payments->arAging($filters->fromDate, $filters->toDate, $filters->warehouse);
-    $topOpenAr = $payments->topOpenAr(5);
+    $topOpenAr = $payments->topOpenAr($filters->fromDate, $filters->toDate, $filters->warehouse);
 
     try {
         $hasLpn = $lpn->hasData();
@@ -575,6 +575,7 @@ $chartData = [
             <div class="ovcard lp">
                 <div class="eyebrow">🏦 Top open A/R balances <?= SourceBadge::render('invoiced') ?></div>
                 <?php if ($canSeeFinancials): ?>
+                    <div class="divscroll">
                     <?php foreach ($topOpenAr as $p): ?>
                     <div class="row">
                         <span><?= e($p['customer']) ?></span>
@@ -584,8 +585,9 @@ $chartData = [
                         </span>
                     </div>
                     <?php endforeach; ?>
+                    </div>
                     <?php if ($topOpenAr === []): ?>
-                        <p class="ovempty">No open invoices — nothing owed.</p>
+                        <p class="ovempty">No open invoices match the applied filters.</p>
                     <?php endif; ?>
                 <?php else: ?>
                     <p class="ovempty">Restricted to C-level users.</p>
