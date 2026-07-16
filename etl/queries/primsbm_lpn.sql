@@ -26,14 +26,24 @@ SELECT
     P."U_BinCode"                                              AS bin_location,
     P."U_ItemCode"                                             AS item_code,
     OI."ItemName"                                              AS item_description,
+    CASE
+        WHEN LOWER(COALESCE(G."ItmsGrpNam", '')) LIKE '%raw%'
+          OR LOWER(COALESCE(G."ItmsGrpNam", '')) LIKE '%ingredient%' THEN 'Raw'
+        WHEN LOWER(COALESCE(G."ItmsGrpNam", '')) LIKE '%finish%'
+          OR LOWER(COALESCE(G."ItmsGrpNam", '')) LIKE '%fg%'
+          OR UPPER(COALESCE(WH."WhsName", P."U_WhsCode", '')) LIKE 'FG%' THEN 'Finished'
+        ELSE 'Other'
+    END                                                        AS item_type,
     P."U_BatchNo"                                              AS batch_number,
     P."U_Quantity"                                             AS quantity,
+    P."U_Quantity" * COALESCE(OI."AvgPrice", 0)                AS pallet_value,
     P."U_UoM"                                                  AS unit_of_measure,
     P."U_RecvDate"                                             AS received_date,
     P."U_ExpDate"                                              AS expiry_date
 FROM "@BMM_PALLETMASTER" P
     LEFT JOIN OWHS WH ON WH."WhsCode" = P."U_WhsCode"
     LEFT JOIN OITM OI ON OI."ItemCode" = P."U_ItemCode"
+    LEFT JOIN OITB G ON G."ItmsGrpCod" = OI."ItmsGrpCod"
 -- Only pallets that still exist / are relevant to operations; adjust as needed.
 WHERE (P."U_Status" IS NULL OR P."U_Status" <> 'Closed')
 ORDER BY P."U_PalletNo";

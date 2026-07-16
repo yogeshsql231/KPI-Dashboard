@@ -20,8 +20,19 @@ SELECT
     COALESCE(B."U_BINNO", P."U_BMBINNO")                       AS bin_location,
     B."U_ITEMCODE"                                             AS item_code,
     OI."ItemName"                                              AS item_description,
+    -- Raw vs finished-goods classification: SAP item group name first, then a
+    -- FG-warehouse fallback (Beas FG locations are prefixed "FG").
+    TO_VARCHAR(CASE
+        WHEN LOWER(COALESCE(G."ItmsGrpNam", '')) LIKE '%raw%'
+          OR LOWER(COALESCE(G."ItmsGrpNam", '')) LIKE '%ingredient%' THEN 'Raw'
+        WHEN LOWER(COALESCE(G."ItmsGrpNam", '')) LIKE '%finish%'
+          OR LOWER(COALESCE(G."ItmsGrpNam", '')) LIKE '%fg%'
+          OR UPPER(COALESCE(WH."WhsName", B."U_WHSCODE", P."U_BMLOCATION", '')) LIKE 'FG%' THEN 'Finished'
+        ELSE 'Other'
+    END)                                                       AS item_type,
     COALESCE(B."U_LOTNO", P."U_BATCHNO")                       AS batch_number,
     SUM(B."U_TOTALQTY")                                        AS quantity,
+    SUM(B."U_TOTALQTY" * COALESCE(OI."AvgPrice", 0))           AS pallet_value,
     OI."InvntryUom"                                            AS unit_of_measure,
     P."U_INDATE"                                               AS received_date,
     CAST(NULL AS DATE)                                         AS expiry_date
@@ -29,13 +40,14 @@ FROM "DAMASCUS_BAKERY"."@BMM_PALLETMASTER" P
     LEFT JOIN "DAMASCUS_BAKERY"."@BMM_BINDETAIL" B ON B."U_SCCNO" = P."U_BMPALLETID"
     LEFT JOIN "DAMASCUS_BAKERY"."OWHS" WH ON WH."WhsCode" = COALESCE(B."U_WHSCODE", P."U_BMLOCATION")
     LEFT JOIN "DAMASCUS_BAKERY"."OITM" OI ON OI."ItemCode" = B."U_ITEMCODE"
+    LEFT JOIN "DAMASCUS_BAKERY"."OITB" G ON G."ItmsGrpCod" = OI."ItmsGrpCod"
 WHERE COALESCE(P."Canceled", 'N') <> 'Y'
   AND P."U_BMSTATUS" = 'AVAILABLE'
 GROUP BY
     P."U_BMPALLETID", P."U_BMSTATUS",
     WH."WhsName", B."U_WHSCODE", P."U_BMLOCATION",
     B."U_BINNO", P."U_BMBINNO",
-    B."U_ITEMCODE", OI."ItemName",
+    B."U_ITEMCODE", OI."ItemName", G."ItmsGrpNam",
     B."U_LOTNO", P."U_BATCHNO",
     OI."InvntryUom", P."U_INDATE"
 ORDER BY P."U_BMPALLETID"
