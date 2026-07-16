@@ -180,16 +180,17 @@ final class DeliveryRepository
     public function topCustomers(DeliveryFilters $f, int $limit = 10): array
     {
         [$where, $params] = $f->clause();
+        $base = DeliveryFilters::customerBaseExpr('customer_name');
         $stmt = $this->pdo->prepare(
             "SELECT
-                customer_name,
+                MIN($base) AS customer_name,
                 COALESCE(SUM(delivered_qty), 0) AS delivered_qty,
                 CASE WHEN SUM(CASE WHEN ifr_eligible = 1 THEN order_qty ELSE 0 END) > 0
                      THEN SUM(CASE WHEN ifr_eligible = 1 THEN delivered_qty ELSE 0 END)
                         / SUM(CASE WHEN ifr_eligible = 1 THEN order_qty ELSE 0 END) END AS fill_rate
              FROM vw_delivery_lines
              WHERE $where
-             GROUP BY customer_name
+             GROUP BY UPPER($base)
              ORDER BY delivered_qty DESC
              LIMIT " . (int) $limit
         );
@@ -575,15 +576,16 @@ final class DeliveryRepository
         if ($retailOnly) {
             $where .= ' AND is_retail = 1';
         }
+        $base = DeliveryFilters::customerBaseExpr('customer_name');
         $stmt = $this->pdo->prepare(
             "SELECT
-                customer_name,
+                MIN($base)                       AS customer_name,
                 COUNT(DISTINCT sales_order)      AS orders,
                 COALESCE(SUM(line_amount), 0)    AS order_amount,
                 COALESCE(SUM(delivered_qty), 0)  AS delivered_qty
              FROM vw_delivery_lines
              WHERE $where
-             GROUP BY customer_name
+             GROUP BY UPPER($base)
              ORDER BY order_amount DESC, orders DESC
              LIMIT " . (int) $limit
         );
@@ -601,17 +603,18 @@ final class DeliveryRepository
     public function byDivisionCustomer(DeliveryFilters $f): array
     {
         [$where, $params] = $f->clause();
+        $base = DeliveryFilters::customerBaseExpr('customer_name');
         $stmt = $this->pdo->prepare(
             "SELECT
                 COALESCE(NULLIF(TRIM(customer_group), ''), 'Unassigned') AS division,
-                customer_name,
+                MIN($base)                       AS customer_name,
                 COUNT(DISTINCT sales_order)      AS orders,
                 COALESCE(SUM(order_qty), 0)      AS order_qty,
                 COALESCE(SUM(delivered_qty), 0)  AS delivered_qty,
                 COALESCE(SUM(line_amount), 0)    AS order_amount
              FROM vw_delivery_lines
              WHERE $where
-             GROUP BY division, customer_name
+             GROUP BY division, UPPER($base)
              ORDER BY division, order_amount DESC, orders DESC"
         );
         $stmt->execute($params);
