@@ -22,6 +22,12 @@ description: Test the KPI Dashboard PHP pages (Overview, Delivery, Warehouse, Cu
 - Warehouse page mixes delivery-based panels (respond to SO/carrier/status filters) and inventory-cache panels (warehouse/item only — they intentionally ignore SO/carrier). Don't flag that as a bug.
 - AUTH may be off (`AUTH_ENABLED=false` in `.env`); if pages redirect to login, check that flag.
 
+## Pallet raw/FG split (SCRUM-105) specifics
+- `lpn_pallets` has `item_type` ('Raw'/'Finished'/'Other', NULL until migration 021 + a fresh LPN pull) and `pallet_value` ($ = qty × OITM.AvgPrice). The Overview group bars show a `.ptypes` sub-line like `2 raw ($2K) · 1 finished goods ($3K) · $5K total` — $ only when financials are visible; rows with NULL item_type show no sub-line and the hover detail shows a "rerun the LPN ETL" note.
+- To test: seed temp rows with `source_system='SAMPLE-TYPE'` covering Newark/CLIFFTON/Clifton-MissingLPN/FG-BROOKLYN with distinct pallet_value amounts, then DELETE by source_system and confirm COUNT=0.
+- Money visibility gotcha: `showMoney` requires order `line_amount > 0` in the selected date range — the Overview date params are `from_date`/`to_date` (NOT `from`/`to`). Default 7-day range may have no amounts → counts-only display; pick a range covering seeded delivery data to see $.
+- Classification is heuristic (OITB group name %raw%/%ingredient% vs %finish%/%fg% or FG-prefixed warehouse); on live data it may misbucket — ask for real `ItmsGrpNam` values before flagging.
+
 ## Overview redesign (SCRUM-82, reworked by SCRUM-102) specifics
 - Overview has client-side behaviors driven by `DATA` JSON in `public/overview.php` + `public/assets/overview.css`: KPI tile hover trend, correlation month drill-down, drag-to-reorder sections. Since SCRUM-102 the gold "executive" theme and the pallet Loaves/Bars toggle are gone: Overview uses the shared style.css palette (navy topbar, blue accents) and pallets-by-warehouse renders plain stacked `.pbar` bars with per-status tooltips; the Pallets & Orders grid is `g5` (no Cycle time tile — don't expect one).
 - Layout preferences persist in localStorage key `ovLayout:<user>`; "reset layout" clears them. When retesting, prior sessions' saved prefs may make the initial view differ from defaults — that's persistence working, not a bug.
