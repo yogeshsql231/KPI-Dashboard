@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/Filters.php';
+require_once __DIR__ . '/DeliveryFilters.php';
 
 /**
  * Read-only KPI queries used by the dashboard.
@@ -159,11 +160,12 @@ final class KpiRepository
     public function topCustomers(Filters $f, int $limit = 10): array
     {
         [$where, $params] = $f->shipmentClause();
+        $base = DeliveryFilters::customerBaseExpr('customer');
         $stmt = $this->pdo->prepare(
-            "SELECT customer, SUM(qty_shipped) AS qty_shipped
+            "SELECT MIN($base) AS customer, SUM(qty_shipped) AS qty_shipped
              FROM vw_order_shipment_kpi
              WHERE $where
-             GROUP BY customer
+             GROUP BY UPPER($base)
              ORDER BY qty_shipped DESC
              LIMIT " . (int) $limit
         );

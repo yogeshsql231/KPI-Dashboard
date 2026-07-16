@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/DeliveryFilters.php';
+
 /**
  * Read-only queries for the A/R side of the "Late Deliveries vs Late Payments"
  * report. Reads the ar_payments cache (see migration 006 / vw_ar_payments).
@@ -93,9 +95,12 @@ final class PaymentRepository
         $g = (int) $graceDays;
         [$where, $params] = $this->range($from, $to);
         $limit = max(1, min(100, $limit));
+        $base = DeliveryFilters::customerBaseExpr(
+            "COALESCE(NULLIF(customer_name, ''), customer_code, 'Unknown')"
+        );
         $stmt = $this->pdo->prepare(
             "SELECT
-                COALESCE(NULLIF(customer_name, ''), customer_code, 'Unknown') AS customer,
+                MIN($base) AS customer,
                 COALESCE(SUM(CASE WHEN paid_date IS NOT NULL
                                    AND DATEDIFF(paid_date, due_date) > $g
                                   THEN paid_amount ELSE 0 END), 0)      AS paid_late,
@@ -110,7 +115,7 @@ final class PaymentRepository
                          THEN 1 ELSE 0 END)                             AS late_invoices
              FROM ar_payments
              WHERE $where
-             GROUP BY COALESCE(NULLIF(customer_name, ''), customer_code, 'Unknown')
+             GROUP BY UPPER($base)
              HAVING paid_late > 0
              ORDER BY paid_late DESC
              LIMIT $limit"
@@ -164,16 +169,19 @@ final class PaymentRepository
     public function topOpenAr(int $limit = 5): array
     {
         $limit = max(1, min(100, $limit));
+        $base = DeliveryFilters::customerBaseExpr(
+            "COALESCE(NULLIF(customer_name, ''), customer_code, 'Unknown')"
+        );
         return $this->pdo->query(
             "SELECT
-                COALESCE(NULLIF(customer_name, ''), customer_code, 'Unknown') AS customer,
+                MIN($base) AS customer,
                 COUNT(*)                                                      AS invoices,
                 COALESCE(SUM(invoice_amount - paid_amount), 0)                AS open_amount,
                 MAX(CASE WHEN due_date IS NOT NULL AND due_date < CURDATE()
                          THEN DATEDIFF(CURDATE(), due_date) ELSE 0 END)       AS oldest_days_past_due
              FROM ar_payments
              WHERE invoice_amount - paid_amount > 0.005
-             GROUP BY COALESCE(NULLIF(customer_name, ''), customer_code, 'Unknown')
+             GROUP BY UPPER($base)
              ORDER BY open_amount DESC, oldest_days_past_due DESC
              LIMIT $limit"
         )->fetchAll();

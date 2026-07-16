@@ -150,6 +150,18 @@ final class DeliveryFilters
     }
 
     /**
+     * SQL expression for the base company name of a customer: SAP CardName
+     * embeds the branch/address after ":" or " - " (e.g. "SK FOOD
+     * GROUP:Tolleson, AZ", "Chick-fil-A Supply LLC - CARTERSVILLE, GA"), so
+     * cutting at those separators merges branches of the same customer.
+     * Hyphens without surrounding spaces (Chick-fil-A) are preserved.
+     */
+    public static function customerBaseExpr(string $column): string
+    {
+        return "TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX($column, ':', 1), ' - ', 1))";
+    }
+
+    /**
      * Site group a warehouse name belongs to — the PHP-side twin of
      * warehouseCondition(), for grouping already-fetched rows.
      */
