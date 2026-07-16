@@ -138,26 +138,7 @@ final class PaymentRepository
      */
     public function arAging(?string $from = null, ?string $to = null, ?string $warehouse = null): array
     {
-        $conds = ['invoice_amount - paid_amount > 0.005'];
-        $params = [];
-        if ($from !== null && $from !== '') {
-            $conds[] = 'invoice_date >= ?';
-            $params[] = $from;
-        }
-        if ($to !== null && $to !== '') {
-            $conds[] = 'invoice_date <= ?';
-            $params[] = $to;
-        }
-        if ($warehouse !== null && $warehouse !== '') {
-            [$whSql, $whParams] = DeliveryFilters::warehouseCondition('d.warehouse', $warehouse);
-            $conds[] = "customer_code IS NOT NULL AND EXISTS (
-                SELECT 1 FROM delivery_lines d
-                WHERE d.customer_code = ar_payments.customer_code AND $whSql)";
-            foreach ($whParams as $p) {
-                $params[] = $p;
-            }
-        }
-        $where = implode(' AND ', $conds);
+        [$where, $params] = $this->openArWhere($from, $to, $warehouse);
         $stmt = $this->pdo->prepare(
             "SELECT
                 CASE WHEN due_date IS NULL OR DATEDIFF(CURDATE(), due_date) <= 0 THEN 'Current'
@@ -187,17 +168,18 @@ final class PaymentRepository
     }
 
     /**
-     * Customers with the largest open A/R balance, oldest past-due first on ties.
+     * Customers with the largest open A/R balance, oldest past-due first on
+     * ties. Uncapped; honors the same date/warehouse filters as arAging().
      *
      * @return array<int, array<string, mixed>>
      */
-    public function topOpenAr(int $limit = 5): array
+    public function topOpenAr(?string $from = null, ?string $to = null, ?string $warehouse = null): array
     {
-        $limit = max(1, min(100, $limit));
+        [$where, $params] = $this->openArWhere($from, $to, $warehouse);
         $base = DeliveryFilters::customerBaseExpr(
             "COALESCE(NULLIF(customer_name, ''), customer_code, 'Unknown')"
         );
-        return $this->pdo->query(
+        $stmt = $this->pdo->prepare(
             "SELECT
                 MIN($base) AS customer,
                 COUNT(*)                                                      AS invoices,
@@ -205,11 +187,43 @@ final class PaymentRepository
                 MAX(CASE WHEN due_date IS NOT NULL AND due_date < CURDATE()
                          THEN DATEDIFF(CURDATE(), due_date) ELSE 0 END)       AS oldest_days_past_due
              FROM ar_payments
-             WHERE invoice_amount - paid_amount > 0.005
+             WHERE $where
              GROUP BY UPPER($base)
-             ORDER BY open_amount DESC, oldest_days_past_due DESC
-             LIMIT $limit"
-        )->fetchAll();
+             ORDER BY open_amount DESC, oldest_days_past_due DESC"
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Shared open-invoice WHERE fragment for the A/R widgets: balance still
+     * owed, invoice_date within the range, warehouse matched via the
+     * customer's delivery_lines orders (invoices carry no warehouse).
+     *
+     * @return array{0:string,1:array<int,mixed>}
+     */
+    private function openArWhere(?string $from, ?string $to, ?string $warehouse): array
+    {
+        $conds = ['invoice_amount - paid_amount > 0.005'];
+        $params = [];
+        if ($from !== null && $from !== '') {
+            $conds[] = 'invoice_date >= ?';
+            $params[] = $from;
+        }
+        if ($to !== null && $to !== '') {
+            $conds[] = 'invoice_date <= ?';
+            $params[] = $to;
+        }
+        if ($warehouse !== null && $warehouse !== '') {
+            [$whSql, $whParams] = DeliveryFilters::warehouseCondition('d.warehouse', $warehouse);
+            $conds[] = "customer_code IS NOT NULL AND EXISTS (
+                SELECT 1 FROM delivery_lines d
+                WHERE d.customer_code = ar_payments.customer_code AND $whSql)";
+            foreach ($whParams as $p) {
+                $params[] = $p;
+            }
+        }
+        return [implode(' AND ', $conds), $params];
     }
 
     /** True when the ar_payments cache has any rows (drives the empty-state UI). */
