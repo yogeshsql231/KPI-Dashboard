@@ -9,6 +9,9 @@ declare(strict_types=1);
  */
 final class DeliveryFilters
 {
+    /** Fixed warehouse buttons on the Overview; Others = everything else. */
+    public const WAREHOUSE_GROUPS = ['Newark', 'Clifton', 'Brooklyn', 'Others'];
+
     public function __construct(
         public readonly ?string $fromDate = null,
         public readonly ?string $toDate = null,
@@ -92,7 +95,8 @@ final class DeliveryFilters
             $add('date', 'posting_date <= ?', [$this->toDate]);
         }
         if ($this->warehouse !== null) {
-            $add('warehouse', 'warehouse = ?', [$this->warehouse]);
+            [$whSql, $whParams] = self::warehouseCondition('warehouse', $this->warehouse);
+            $add('warehouse', $whSql, $whParams);
         }
         if ($this->salesOrder !== null) {
             $add('so', 'sales_order LIKE ?', ['%' . $this->salesOrder . '%']);
@@ -115,6 +119,34 @@ final class DeliveryFilters
         }
 
         return [implode(' AND ', $conds), $params];
+    }
+
+    /**
+     * Condition for one warehouse filter value. The group names used by the
+     * Overview buttons match every naming variant of that site (e.g. Clifton
+     * covers Cliffton and Clifton-MissingLPN); Others matches every warehouse
+     * that is not Newark/Clifton/Brooklyn. Any other value matches exactly.
+     *
+     * @return array{0:string,1:array<int,string>}
+     */
+    public static function warehouseCondition(string $column, string $value): array
+    {
+        switch ($value) {
+            case 'Newark':
+                return ["LOWER($column) LIKE ?", ['%newark%']];
+            case 'Clifton':
+                return ["(LOWER($column) LIKE ? OR LOWER($column) LIKE ?)", ['%clifton%', '%cliffton%']];
+            case 'Brooklyn':
+                return ["LOWER($column) LIKE ?", ['%brooklyn%']];
+            case 'Others':
+                return [
+                    "(LOWER($column) NOT LIKE ? AND LOWER($column) NOT LIKE ?"
+                        . " AND LOWER($column) NOT LIKE ? AND LOWER($column) NOT LIKE ?)",
+                    ['%newark%', '%clifton%', '%cliffton%', '%brooklyn%'],
+                ];
+            default:
+                return ["$column = ?", [$value]];
+        }
     }
 
     /**

@@ -36,8 +36,11 @@ final class LpnRepository
         $params = [];
 
         if ($f->warehouse !== null) {
-            $conds[] = 'std_warehouse = ?';
-            $params[] = $f->warehouse;
+            [$whSql, $whParams] = DeliveryFilters::warehouseCondition('std_warehouse', $f->warehouse);
+            $conds[] = $whSql;
+            foreach ($whParams as $p) {
+                $params[] = $p;
+            }
         }
         if ($f->item !== null) {
             $conds[] = '(item_code LIKE ? OR item_description LIKE ? OR lpn LIKE ? OR batch_number LIKE ? OR bin_location LIKE ?)';
