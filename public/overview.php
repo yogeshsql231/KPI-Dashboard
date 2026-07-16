@@ -180,6 +180,20 @@ foreach ($palletTrend as $r) {
 ksort($tOnHand);
 $tOnHand = array_values($tOnHand);
 
+// Pallets-on-hand split by site group for the tile subtitle.
+$onHandByGroup = [];
+foreach ($palletRows as $r) {
+    $g = DeliveryFilters::warehouseGroup((string) $r['warehouse']);
+    $onHandByGroup[$g] = ($onHandByGroup[$g] ?? 0) + (int) $r['pallets'];
+}
+$onHandParts = [];
+foreach (DeliveryFilters::WAREHOUSE_GROUPS as $g) {
+    if (isset($onHandByGroup[$g])) {
+        $onHandParts[] = $g . ' ' . num($onHandByGroup[$g]);
+    }
+}
+$onHandSplit = implode(' · ', $onHandParts);
+
 // OTIF tile: RAG status color (green >= 95%, gold >= 85%, red below).
 $otifRate = $otif['otif_rate'];
 $tOtif = [];
@@ -206,7 +220,7 @@ $tiles = [
         'label' => 'Pallets on hand',
         'value' => $lpnSummary !== null ? num($lpnSummary['pallets'] ?? 0) : '—',
         'sub'   => $lpnSummary !== null
-            ? 'across ' . num($lpnSummary['warehouses'] ?? 0) . ' warehouses · ' . num($lpnSummary['items'] ?? 0) . ' items'
+            ? ($onHandSplit !== '' ? $onHandSplit : 'run the LPN ETL to populate')
             : 'run the LPN ETL to populate',
         'delta' => deltaPct($tOnHand),
         'spark' => $tOnHand,
@@ -238,21 +252,35 @@ $tiles = [
     ],
 ];
 
-// ---- Pallets by warehouse location ----------------------------------------
+// ---- Pallets by site group (Newark / Clifton / Brooklyn / Others) ----------
 $pallets = [];
 foreach ($palletRows as $r) {
-    $w = (string) $r['warehouse'];
+    $w = DeliveryFilters::warehouseGroup((string) $r['warehouse']);
     $s = (string) $r['status'];
+    $prev = $pallets[$w]['statuses'][$s] ?? ['c' => 0, 'qty' => 0.0];
     $pallets[$w]['statuses'][$s] = [
-        'c'   => (int) $r['pallets'],
-        'qty' => (float) $r['total_qty'],
+        'c'   => $prev['c'] + (int) $r['pallets'],
+        'qty' => $prev['qty'] + (float) $r['total_qty'],
     ];
     $pallets[$w]['total'] = ($pallets[$w]['total'] ?? 0) + (int) $r['pallets'];
     $pallets[$w]['aged']  = ($pallets[$w]['aged'] ?? 0) + (int) $r['aged_30d'];
 }
+$groupTrend = [];
 foreach ($palletTrend as $r) {
-    $pallets[(string) $r['warehouse']]['trend'][] = (int) $r['pallets'];
+    $g = DeliveryFilters::warehouseGroup((string) $r['warehouse']);
+    $groupTrend[$g][(string) $r['yw']] = ($groupTrend[$g][(string) $r['yw']] ?? 0) + (int) $r['pallets'];
 }
+foreach ($groupTrend as $g => $byWeek) {
+    ksort($byWeek);
+    $pallets[$g]['trend'] = array_values($byWeek);
+}
+$ordered = [];
+foreach (DeliveryFilters::WAREHOUSE_GROUPS as $g) {
+    if (isset($pallets[$g])) {
+        $ordered[$g] = $pallets[$g];
+    }
+}
+$pallets = $ordered;
 $palletStatuses = [];
 foreach ($palletRows as $r) {
     if (!in_array((string) $r['status'], $palletStatuses, true)) {
@@ -458,7 +486,7 @@ $chartData = [
         <div class="g2">
             <div class="ovcard">
                 <div class="ptop">
-                    <div class="eyebrow" style="margin:0">🏭 Pallets by warehouse location <?= SourceBadge::render('lpn') ?></div>
+                    <div class="eyebrow" style="margin:0">🏭 Pallets by warehouse group <?= SourceBadge::render('lpn') ?></div>
                 </div>
                 <?php if ($hasLpn && $pallets !== []): ?>
                     <div class="plegend" id="plegend"></div>
