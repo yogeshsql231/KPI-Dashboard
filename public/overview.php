@@ -249,21 +249,22 @@ $tiles = [
 ];
 
 // ---- Pallets by site group (Newark / Clifton / Brooklyn / Others) ----------
-// Housekeeping statuses are hidden from the legend/bar segments; their
-// pallets still count toward the group and consolidated totals.
+// Housekeeping statuses (Available/ALL/FreezerHold) are rolled into one
+// neutral "Other" segment so the bars stay full; named statuses keep
+// their own colors and the totals are unchanged.
 $hiddenStatuses = ['available', 'all', 'freezerhold'];
 $pallets = [];
 foreach ($palletRows as $r) {
     $w = DeliveryFilters::warehouseGroup((string) $r['warehouse']);
     $s = (string) $r['status'];
-    if (!in_array(strtolower($s), $hiddenStatuses, true)) {
-        $prev = $pallets[$w]['statuses'][$s] ?? ['c' => 0, 'qty' => 0.0];
-        $pallets[$w]['statuses'][$s] = [
-            'c'   => $prev['c'] + (int) $r['pallets'],
-            'qty' => $prev['qty'] + (float) $r['total_qty'],
-        ];
+    if (in_array(strtolower($s), $hiddenStatuses, true)) {
+        $s = 'Other';
     }
-    $pallets[$w]['statuses'] = $pallets[$w]['statuses'] ?? [];
+    $prev = $pallets[$w]['statuses'][$s] ?? ['c' => 0, 'qty' => 0.0];
+    $pallets[$w]['statuses'][$s] = [
+        'c'   => $prev['c'] + (int) $r['pallets'],
+        'qty' => $prev['qty'] + (float) $r['total_qty'],
+    ];
     $pallets[$w]['total'] = ($pallets[$w]['total'] ?? 0) + (int) $r['pallets'];
     $pallets[$w]['aged']  = ($pallets[$w]['aged'] ?? 0) + (int) $r['aged_30d'];
 }
@@ -279,14 +280,19 @@ foreach (DeliveryFilters::WAREHOUSE_GROUPS as $g) {
 }
 $pallets = $ordered;
 $palletStatuses = [];
+$hasOther = false;
 foreach ($palletRows as $r) {
     $s = (string) $r['status'];
     if (in_array(strtolower($s), $hiddenStatuses, true)) {
+        $hasOther = true;
         continue;
     }
     if (!in_array($s, $palletStatuses, true)) {
         $palletStatuses[] = $s;
     }
+}
+if ($hasOther) {
+    $palletStatuses[] = 'Other';
 }
 
 // ---- Correlation: late deliveries vs late payments, click-to-drill --------
@@ -734,7 +740,7 @@ $chartData = [
     <script>
     const DATA = <?= json_encode($chartData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
     const GOLD = '#1d4ed8', GREEN = '#16a34a', RED = '#dc2626', BLUE = '#2563eb', PURPLE = '#7c3aed', DIM = '#9098a3', FAINT = '#d1d5db';
-    const STATUS_COLORS = { 'Ready': GOLD, 'Waiting': '#8B8D98', 'Delivered': GREEN, 'In Stock': GOLD, 'Picked': BLUE, 'Shipped': GREEN, 'Expired': RED };
+    const STATUS_COLORS = { 'Ready': GOLD, 'Waiting': '#8B8D98', 'Delivered': GREEN, 'In Stock': GOLD, 'Picked': BLUE, 'Shipped': GREEN, 'Expired': RED, 'Other': FAINT };
     const EXTRA_COLORS = [GOLD, BLUE, GREEN, PURPLE, RED, DIM];
     const usd = (v) => '$' + Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 });
     const usdShort = (v) => Math.abs(v) >= 1e6 ? '$' + (v / 1e6).toFixed(1) + 'M' : (Math.abs(v) >= 1e3 ? '$' + Math.round(v / 1e3) + 'K' : usd(v));
