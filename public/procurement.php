@@ -76,6 +76,11 @@ $supplier  = trim((string) ($_GET['supplier'] ?? '')) ?: null;
 $warehouse = trim((string) ($_GET['warehouse'] ?? '')) ?: null;
 $from      = dateParam('from_date');
 $to        = dateParam('to_date');
+// Default to the last 7 days so the page loads with data immediately.
+if ($from === null && $to === null) {
+    $from = date('Y-m-d', strtotime('-6 days'));
+    $to = date('Y-m-d');
+}
 
 $invCategory  = trim((string) ($_GET['inv_category'] ?? '')) ?: null;
 $invWarehouse = trim((string) ($_GET['inv_warehouse'] ?? '')) ?: null;
@@ -119,7 +124,7 @@ try {
     $invRepo = new InventorySupplyRepository(Database::connection());
     $invHasData = $invRepo->hasData();
     $invCategories = $invRepo->options('category');
-    $invWarehouses = $invRepo->options('warehouse');
+    $invWarehouses = DeliveryFilters::WAREHOUSE_GROUPS;
     $invSummary = $invRepo->summary($invCategory, $invWarehouse, $invItem);
     $invRows = $invRepo->lowestSupply($invCategory, $invWarehouse, $invItem, 30);
     $invLastRefreshed = $invRepo->lastRefreshed();
@@ -190,14 +195,15 @@ $rate = $otif['otif_rate'];
                 <?php endforeach; ?>
             </select>
         </div>
-        <div class="filter">
-            <label for="warehouse">Warehouse</label>
-            <select id="warehouse" name="warehouse">
-                <option value="">All warehouses</option>
-                <?php foreach ($warehouses as $w): ?>
-                <option value="<?= e($w) ?>"<?= $w === $warehouse ? ' selected' : '' ?>><?= e($w) ?></option>
+        <div class="filter filter-wh">
+            <label>Warehouse</label>
+            <input type="hidden" name="warehouse" value="<?= e($warehouse ?? '') ?>">
+            <div class="wh-buttons">
+                <button type="button" class="wh-btn<?= $warehouse === null ? ' active' : '' ?>" onclick="pickWarehouse(this, '')">All</button>
+                <?php foreach (DeliveryFilters::WAREHOUSE_GROUPS as $w): ?>
+                <button type="button" class="wh-btn<?= $w === $warehouse ? ' active' : '' ?>" onclick="pickWarehouse(this, <?= htmlspecialchars((string) json_encode($w), ENT_QUOTES) ?>)"><?= e($w) ?></button>
                 <?php endforeach; ?>
-            </select>
+            </div>
         </div>
         <?php foreach (['inv_category' => $invCategory, 'inv_warehouse' => $invWarehouse, 'inv_item' => $invItem] as $hk => $hv): if ($hv !== null): ?>
         <input type="hidden" name="<?= e($hk) ?>" value="<?= e($hv) ?>">
@@ -427,5 +433,12 @@ $rate = $otif['otif_rate'];
 <footer class="footer">
     KPI Dashboard · Procurement · source: SAP Business One via local cache<?= $lastRefreshed ? ' · data refreshed ' . e($lastRefreshed) : '' ?>
 </footer>
+<script>
+function pickWarehouse(btn, val) {
+    var form = btn.form;
+    form.elements['warehouse'].value = val;
+    form.submit();
+}
+</script>
 </body>
 </html>

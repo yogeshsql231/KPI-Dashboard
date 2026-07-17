@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/DeliveryFilters.php';
+
 /**
  * Dashboard filter state, parsed and sanitised from the query string.
  *
@@ -89,8 +91,11 @@ final class Filters
             $params[] = '%' . $this->po . '%';
         }
         if ($this->warehouse !== null) {
-            $conds[] = 'warehouse = ?';
-            $params[] = $this->warehouse;
+            [$whSql, $whParams] = DeliveryFilters::warehouseCondition('warehouse', $this->warehouse);
+            $conds[] = $whSql;
+            foreach ($whParams as $p) {
+                $params[] = $p;
+            }
         }
         if ($this->salesOrder !== null) {
             $conds[] = 'so_docentry LIKE ?';
@@ -164,8 +169,11 @@ final class Filters
             $params[] = '%' . $this->po . '%';
         }
         if ($this->warehouse !== null) {
-            $conds[] = 'warehouse = ?';
-            $params[] = $this->warehouse;
+            [$whSql, $whParams] = DeliveryFilters::warehouseCondition('warehouse', $this->warehouse);
+            $conds[] = $whSql;
+            foreach ($whParams as $p) {
+                $params[] = $p;
+            }
         }
         if ($this->salesOrder !== null) {
             $conds[] = 'sales_order LIKE ?';

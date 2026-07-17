@@ -56,7 +56,13 @@ $demographics = [];
 $warehouseOptions = [];
 $otifOrders = null;
 $cycleOrders = null;
-$filters = Filters::fromRequest($_GET);
+// Default to the last 7 days so the page loads with data immediately.
+$q = $_GET;
+if (($q['from_date'] ?? '') === '' && ($q['to_date'] ?? '') === '') {
+    $q['from_date'] = date('Y-m-d', strtotime('-6 days'));
+    $q['to_date'] = date('Y-m-d');
+}
+$filters = Filters::fromRequest($q);
 
 try {
     $repo = new KpiRepository(Database::connection());
@@ -135,14 +141,15 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
             <label for="to_date">To date</label>
             <input type="date" id="to_date" name="to_date" value="<?= e($filters->toDate) ?>">
         </div>
-        <div class="filter">
-            <label for="warehouse">Warehouse</label>
-            <select id="warehouse" name="warehouse">
-                <option value="">All warehouses</option>
-                <?php foreach ($warehouseOptions as $opt): ?>
-                    <option value="<?= e($opt) ?>"<?= $filters->warehouse === $opt ? ' selected' : '' ?>><?= e($opt) ?></option>
+        <div class="filter filter-wh">
+            <label>Warehouse</label>
+            <input type="hidden" name="warehouse" value="<?= e($filters->warehouse ?? '') ?>">
+            <div class="wh-buttons">
+                <button type="button" class="wh-btn<?= $filters->warehouse === null ? ' active' : '' ?>" onclick="pickWarehouse(this, '')">All</button>
+                <?php foreach (DeliveryFilters::WAREHOUSE_GROUPS as $opt): ?>
+                <button type="button" class="wh-btn<?= $filters->warehouse === $opt ? ' active' : '' ?>" onclick="pickWarehouse(this, <?= htmlspecialchars((string) json_encode($opt), ENT_QUOTES) ?>)"><?= e($opt) ?></button>
                 <?php endforeach; ?>
-            </select>
+            </div>
         </div>
         <div class="filter">
             <label for="so">SO number</label>
@@ -368,6 +375,13 @@ $ifrTarget = $targets['item_fill_rate'] ?? 0.98;
 <footer class="footer">
     KPI Dashboard · foundation build · data source: reference workbook (to be replaced by PRIMS / PRODHANA feeds)
 </footer>
+<script>
+function pickWarehouse(btn, val) {
+    var form = btn.form;
+    form.elements['warehouse'].value = val;
+    form.submit();
+}
+</script>
 <script src="assets/views.js"></script>
 </body>
 </html>
