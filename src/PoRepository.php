@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/DeliveryFilters.php';
+
 /**
  * Read-only access to the purchase-order cache (`po_lines` / `vw_po_lines`)
  * refreshed by etl/pull_po.php. Powers the Procurement dashboard's Supplier
@@ -38,8 +40,11 @@ final class PoRepository
             $params[] = $supplier;
         }
         if ($warehouse !== null && $warehouse !== '') {
-            $conds[] = 'warehouse = ?';
-            $params[] = $warehouse;
+            [$whSql, $whParams] = DeliveryFilters::warehouseCondition('warehouse', $warehouse);
+            $conds[] = $whSql;
+            foreach ($whParams as $p) {
+                $params[] = $p;
+            }
         }
         if ($from !== null && $from !== '') {
             $conds[] = 'posting_date >= ?';

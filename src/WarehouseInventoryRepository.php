@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/DeliveryFilters.php';
+
 /**
  * Read-only access to the expanded Warehouse view caches (migration 010):
  * stock on hand, packaging/UoM, batch aging and material movement. Each cache
@@ -68,8 +70,11 @@ final class WarehouseInventoryRepository
         $conds = ['1 = 1'];
         $params = [];
         if ($f->warehouse !== null) {
-            $conds[] = "$whCol = ?";
-            $params[] = $f->warehouse;
+            [$whSql, $whParams] = DeliveryFilters::warehouseCondition($whCol, $f->warehouse);
+            $conds[] = $whSql;
+            foreach ($whParams as $p) {
+                $params[] = $p;
+            }
         }
         if ($f->item !== null) {
             $conds[] = "({$itemPrefix}item_code LIKE ? OR {$itemPrefix}item_description LIKE ?)";

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/DeliveryFilters.php';
+
 /**
  * Read-only access to the inventory days-of-supply cache (`inventory_supply` /
  * `vw_inventory_supply`) refreshed by etl/pull_inventory_supply.php. Powers
@@ -39,8 +41,11 @@ final class InventorySupplyRepository
             $params[] = $category;
         }
         if ($warehouse !== null && $warehouse !== '') {
-            $conds[] = 'std_warehouse = ?';
-            $params[] = $warehouse;
+            [$whSql, $whParams] = DeliveryFilters::warehouseCondition('std_warehouse', $warehouse);
+            $conds[] = $whSql;
+            foreach ($whParams as $p) {
+                $params[] = $p;
+            }
         }
         if ($item !== null && $item !== '') {
             $conds[] = '(item_code LIKE ? OR item_description LIKE ?)';

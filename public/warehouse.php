@@ -92,7 +92,13 @@ $stockoutSplit = [];
 $stockoutRows = [];
 $soSplit = isset($_GET['so_split']) && in_array($_GET['so_split'], ['location', 'category'], true)
     ? (string) $_GET['so_split'] : 'location';
-$filters = DeliveryFilters::fromRequest($_GET);
+// Default to the last 7 days so the page loads with data immediately.
+$q = $_GET;
+if (($q['from_date'] ?? '') === '' && ($q['to_date'] ?? '') === '') {
+    $q['from_date'] = date('Y-m-d', strtotime('-6 days'));
+    $q['to_date'] = date('Y-m-d');
+}
+$filters = DeliveryFilters::fromRequest($q);
 
 try {
     $repo = new DeliveryRepository(Database::connection());
@@ -236,7 +242,7 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
             <label for="to_date">To Date</label>
             <input type="date" id="to_date" name="to_date" value="<?= e($filters->toDate) ?>">
         </div>
-        <?php warehouseButtons('warehouse', 'Warehouse', $opts['warehouse'], $filters->warehouse); ?>
+        <?php warehouseButtons('warehouse', 'Warehouse', DeliveryFilters::WAREHOUSE_GROUPS, $filters->warehouse); ?>
         <div class="filter">
             <label for="so">SO Number</label>
             <input type="text" id="so" name="so" placeholder="contains…" value="<?= e($filters->salesOrder) ?>">
