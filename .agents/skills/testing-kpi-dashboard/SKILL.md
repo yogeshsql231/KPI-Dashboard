@@ -129,6 +129,13 @@ description: Test the KPI Dashboard PHP pages (Overview, Delivery, Warehouse, Cu
 - Pallet widget hides housekeeping statuses (`Available`, `ALL`, `FreezerHold`, case-insensitive `$hiddenStatuses` in overview.php) from the legend/segments but still counts them in group totals and the "Consolidated: N pallets" line. Seed one row of each hidden status plus one visible (e.g. QCHold) under one warehouse: the group total must include hidden rows while the bar shows only the visible segment. Statuses may legitimately produce an empty bar with a non-zero total (all-hidden group) — not a bug.
 - Section `.handle` labels are styled as 16px bold headers but remain the drag handles — verify both appearance and drag still working.
 
+## Global filters on all pages (SCRUM-112) specifics
+- Every dashboard page (Delivery `dashboard.php`, Warehouse, CS `dashboard_cs.php`, Procurement) now defaults missing `from_date`/`to_date` to the trailing 7 days and auto-loads — a bare page load should NEVER show empty date inputs. Audit intentionally has no date/warehouse filters; don't flag that.
+- Warehouse filter everywhere is the fixed group buttons All/Newark/Clifton/Brooklyn/Others (hidden `warehouse` input + `pickWarehouse()` auto-submit), backed by `DeliveryFilters::warehouseCondition()` LIKE predicates. Group semantics: name contains newark / clifton|cliffton / brooklyn; else Others. Procurement's Days-of-Supply panel keeps a separate `inv_warehouse` SELECT but its options are the same group values.
+- Fast group-filter assertion with seed data: Brooklyn → only FG-BROOKLYN rows; Others → COLD-01/DRY-02/FG-* non-Brooklyn rows and must exclude FG-BROOKLYN; groups with no seed data (Newark/Clifton) must render clean "No data" states, not errors.
+- Default dates are computed from the VM's system date, which may be ahead of the seeded data window — set explicit dates covering the seed (e.g. 2026-07-01..04) before asserting non-empty widgets.
+- Chrome native date inputs can mangle typed years (e.g. `275760-07-12`) — after typing, verify the input value in the DOM/URL; a blank `to_date` behaves as open-ended, which can silently still pass a "data appears" check. Prefer navigating with explicit query-string URLs when a precise range matters.
+
 ## Good adversarial test pattern
 1. Load page with no filters, note baseline totals (e.g. Delivered Qty card).
 2. Apply one filter; assert totals change to a DB-verified value, not just "page loads".
