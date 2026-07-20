@@ -84,6 +84,8 @@ $packagingRows = [];
 $agedByWarehouse = [];
 $agedOutRows = [];
 $movementFlow = ['receipt' => 0.0, 'transfer' => 0.0, 'issue' => 0.0, 'waste' => 0.0];
+// Stock stage lifecycle strip (moved from the Delivery page).
+$stockStages = [];
 // Estimated vs actual production usage (moved from the Delivery page).
 $prodUsage = null;
 $prodUsageGroups = [];
@@ -142,6 +144,7 @@ try {
     $agedByWarehouse = $inv->agedByWarehouse($filters);
     $agedOutRows = $inv->agedOutRows($filters);
     $movementFlow = $inv->movementFlow($filters);
+    $stockStages = $inv->stockStages($filters);
     $prodUsage = $inv->productionUsageSummary($filters);
     $prodUsageGroups = $inv->productionUsageByGroup($filters);
     $prodUsageOrders = $inv->productionUsageByOrder($filters, 25);
@@ -488,6 +491,22 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
                 <div class="flow-step wst"><div class="fs-k">Waste / Scrap</div><div class="fs-v"><?= num($movementFlow['waste']) ?></div><div class="fs-sub"><?= $waste > 0 ? pct($movementFlow['waste'] / $waste) : '—' ?></div></div>
             </div>
         <?php endif; ?>
+    </section>
+
+    <section class="panel panel-wide">
+        <h2>Stock Stage Tracking <?= SourceBadge::render('movements') ?></h2>
+        <p class="panel-note">Where stock sits across the lifecycle &mdash; on-hand raw stock and finished goods from the inventory cache (<code>etl/pull_inventory.php</code>); staging, production and waste movements from <code>material_movements</code> over the selected date range.</p>
+        <div class="flow">
+            <div class="flow-step whs"><div class="fs-k">On-Hand Stock</div><div class="fs-v"><?= num($stockStages['on_hand'] ?? null) ?></div><div class="fs-sub">all warehouses</div></div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-step stg"><div class="fs-k">To Staging</div><div class="fs-v"><?= num($stockStages['to_staging'] ?? null) ?></div><div class="fs-sub">transferred</div></div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-step prd"><div class="fs-k">To Production</div><div class="fs-v"><?= num($stockStages['to_production'] ?? null) ?></div><div class="fs-sub">issued</div></div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-step fgd"><div class="fs-k">Finished Goods</div><div class="fs-v"><?= num($stockStages['finished_goods'] ?? null) ?></div><div class="fs-sub">FG warehouses</div></div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-step wst"><div class="fs-k">Returned / Wasted</div><div class="fs-v"><?= num($stockStages['waste'] ?? null) ?></div><div class="fs-sub">waste movements</div></div>
+        </div>
     </section>
 
     <section class="panel panel-wide">

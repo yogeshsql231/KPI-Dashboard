@@ -17,7 +17,6 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/DeliveryRepository.php';
 require_once __DIR__ . '/../src/DeliveryFilters.php';
-require_once __DIR__ . '/../src/WarehouseInventoryRepository.php';
 require_once __DIR__ . '/../src/SourceBadge.php';
 
 Auth::requireDepartment('delivery');
@@ -54,7 +53,6 @@ $byWarehouse = [];
 $topCustomers = [];
 $zeroDelivery = [];
 $opts = ['warehouse' => [], 'carrier' => [], 'so_status' => [], 'pick_status' => []];
-$stockStages = [];
 $lastRefreshed = null;
 // Default to the last 7 days so the page loads with data immediately.
 $q = $_GET;
@@ -75,8 +73,6 @@ try {
         $opts[$k] = $repo->options($k, $filters);
     }
     $lastRefreshed = $repo->lastRefreshed();
-    $inv = new WarehouseInventoryRepository(Database::connection());
-    $stockStages = $inv->stockStages($filters);
 } catch (Throwable $ex) {
     $error = 'Unable to load delivery data. Import sql/delivery_dashboard.sql + sql/delivery_seed.sql and check your .env database connection.';
 }
@@ -269,22 +265,6 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
         <div class="stat"><div class="stat-label">Total Qty</div><div class="stat-value"><?= num($summary['total_qty'] ?? 0) ?></div><div class="stat-note">ordered quantity</div></div>
         <div class="stat"><div class="stat-label">Delivered</div><div class="stat-value"><?= num($summary['delivered_qty'] ?? 0) ?></div><div class="stat-note">actual delivered qty</div></div>
         <div class="stat"><div class="stat-label">Zero Delivery</div><div class="stat-value"><?= num($summary['zero_delivery_pos'] ?? 0) ?> PO</div><div class="stat-note"><?= num($summary['zero_delivery_lines'] ?? 0) ?> item lines</div></div>
-    </section>
-
-    <section class="panel">
-        <h2>Stock Stage Tracking <?= SourceBadge::render('movements') ?></h2>
-        <p class="panel-note">Where stock sits across the lifecycle — on-hand raw stock and finished goods from the inventory cache (<code>etl/pull_inventory.php</code>); staging, production and waste movements from <code>material_movements</code> over the selected date range.</p>
-        <div class="flow">
-            <div class="flow-step whs"><div class="fs-k">On-Hand Stock</div><div class="fs-v"><?= num($stockStages['on_hand'] ?? null) ?></div><div class="fs-sub">all warehouses</div></div>
-            <div class="flow-arrow">&rarr;</div>
-            <div class="flow-step stg"><div class="fs-k">To Staging</div><div class="fs-v"><?= num($stockStages['to_staging'] ?? null) ?></div><div class="fs-sub">transferred</div></div>
-            <div class="flow-arrow">&rarr;</div>
-            <div class="flow-step prd"><div class="fs-k">To Production</div><div class="fs-v"><?= num($stockStages['to_production'] ?? null) ?></div><div class="fs-sub">issued</div></div>
-            <div class="flow-arrow">&rarr;</div>
-            <div class="flow-step fgd"><div class="fs-k">Finished Goods</div><div class="fs-v"><?= num($stockStages['finished_goods'] ?? null) ?></div><div class="fs-sub">FG warehouses</div></div>
-            <div class="flow-arrow">&rarr;</div>
-            <div class="flow-step wst"><div class="fs-k">Returned / Wasted</div><div class="fs-v"><?= num($stockStages['waste'] ?? null) ?></div><div class="fs-sub">waste movements</div></div>
-        </div>
     </section>
 
     <div class="grid">
