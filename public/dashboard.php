@@ -430,6 +430,17 @@ function pickWarehouse(btn, val) {
     form.elements['warehouse'].value = val;
     form.submit();
 }
+// Auto-apply: changing a date or dropdown filter reloads the data immediately.
+document.querySelectorAll('form.filters').forEach(function (f) {
+    f.querySelectorAll('input[type="date"], select').forEach(function (el) {
+        el.addEventListener('change', function () {
+            var from = f.elements['from_date'], to = f.elements['to_date'];
+            // ignore incomplete/mid-typing dates (e.g. year still being typed)
+            if (el.type === 'date' && from && to && !(from.value >= '1900-01-01' && to.value >= '1900-01-01')) return;
+            f.submit();
+        });
+    });
+});
 </script>
 <script src="assets/views.js"></script>
 </body>
