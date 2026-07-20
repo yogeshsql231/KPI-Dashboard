@@ -55,8 +55,6 @@ $topCustomers = [];
 $zeroDelivery = [];
 $opts = ['warehouse' => [], 'carrier' => [], 'so_status' => [], 'pick_status' => []];
 $stockStages = [];
-$prodUsage = null;
-$prodUsageRows = [];
 $lastRefreshed = null;
 // Default to the last 7 days so the page loads with data immediately.
 $q = $_GET;
@@ -79,8 +77,6 @@ try {
     $lastRefreshed = $repo->lastRefreshed();
     $inv = new WarehouseInventoryRepository(Database::connection());
     $stockStages = $inv->stockStages($filters);
-    $prodUsage = $inv->productionUsageSummary($filters);
-    $prodUsageRows = $inv->productionUsageByItem($filters, 15);
 } catch (Throwable $ex) {
     $error = 'Unable to load delivery data. Import sql/delivery_dashboard.sql + sql/delivery_seed.sql and check your .env database connection.';
 }
@@ -289,44 +285,6 @@ function warehouseButtons(string $name, string $label, array $options, ?string $
             <div class="flow-arrow">&rarr;</div>
             <div class="flow-step wst"><div class="fs-k">Returned / Wasted</div><div class="fs-v"><?= num($stockStages['waste'] ?? null) ?></div><div class="fs-sub">waste movements</div></div>
         </div>
-    </section>
-
-    <section class="panel">
-        <h2>Estimated vs Actual Production Usage <?= SourceBadge::render('production') ?></h2>
-        <p class="panel-note">Planned component consumption on production orders vs what was actually issued (<code>production_usage</code> cache from SAP OWOR/WOR1, refreshed by <code>etl/pull_inventory.php --what=production</code>). Positive variance = over-consumption vs plan.</p>
-        <?php if ($prodUsage === null): ?>
-            <p class="panel-note">No production usage data yet — run migration 012 and the production ETL.</p>
-        <?php else: ?>
-            <div class="stats">
-                <div class="stat"><div class="stat-label">Estimated (Planned)</div><div class="stat-value"><?= num($prodUsage['planned']) ?></div><div class="stat-note">planned component qty</div></div>
-                <div class="stat"><div class="stat-label">Actual (Issued)</div><div class="stat-value"><?= num($prodUsage['actual']) ?></div><div class="stat-note">issued to production</div></div>
-                <?php $vp = $prodUsage['variance_pct']; $vc = $vp === null ? 'neutral' : (abs($vp) <= 0.02 ? 'good' : (abs($vp) <= 0.05 ? 'warn' : 'bad')); ?>
-                <div class="stat <?= $vc ?>"><div class="stat-label">Variance</div><div class="stat-value"><?= $vp === null ? '—' : (($vp > 0 ? '+' : '') . pct($vp, 1)) ?></div><div class="stat-note">actual vs estimate</div></div>
-                <div class="stat"><div class="stat-label">Production Orders</div><div class="stat-value"><?= num($prodUsage['orders']) ?></div><div class="stat-note">in selected range</div></div>
-            </div>
-            <table>
-                <thead>
-                    <tr><th>Item</th><th>Description</th><th class="num">Orders</th><th class="num">Estimated</th><th class="num">Actual</th><th class="num">Variance</th><th class="num">Variance %</th></tr>
-                </thead>
-                <tbody>
-                <?php foreach ($prodUsageRows as $r): ?>
-                    <?php $p = (float) $r['planned']; $a = (float) $r['actual']; $v = (float) $r['variance']; ?>
-                    <tr>
-                        <td><?= e($r['item_code']) ?></td>
-                        <td><?= e($r['item_description'] ?? '') ?></td>
-                        <td class="num"><?= num($r['orders']) ?></td>
-                        <td class="num"><?= num($p) ?></td>
-                        <td class="num"><?= num($a) ?></td>
-                        <td class="num"><?= ($v > 0 ? '+' : '') . num($v) ?></td>
-                        <td class="num"><?= $p > 0 ? (($v > 0 ? '+' : '') . pct($v / $p, 1)) : '—' ?></td>
-                    </tr>
-                <?php endforeach; ?>
-                <?php if ($prodUsageRows === []): ?>
-                    <tr><td colspan="7">No production order lines match the current filters.</td></tr>
-                <?php endif; ?>
-                </tbody>
-            </table>
-        <?php endif; ?>
     </section>
 
     <div class="grid">
