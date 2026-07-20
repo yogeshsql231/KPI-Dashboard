@@ -578,7 +578,8 @@ final class WarehouseInventoryRepository
      * Per production order (Beas batch): expected (planned) component qty
      * issued to staging vs what was actually consumed. Only tracked
      * components record an actual qty, so orders with actual = 0 show the
-     * expected side only. Largest expected qty first.
+     * expected side only. One row per order; the site group shown is that of
+     * the component with the largest planned qty. Largest expected qty first.
      *
      * @return array<int,array<string,mixed>>
      */
@@ -592,7 +593,7 @@ final class WarehouseInventoryRepository
         $stmt = $this->pdo->prepare(
             "SELECT u.production_order,
                     MIN(u.doc_date)                      AS doc_date,
-                    $grp                                 AS grp,
+                    SUBSTRING_INDEX(GROUP_CONCAT($grp ORDER BY COALESCE(u.planned_qty, 0) DESC SEPARATOR ','), ',', 1) AS grp,
                     COUNT(DISTINCT u.item_code)          AS items,
                     COUNT(DISTINCT CASE WHEN COALESCE(u.actual_qty, 0) <> 0 THEN u.item_code END) AS items_used,
                     COALESCE(SUM(u.planned_qty), 0)      AS planned,
@@ -600,7 +601,7 @@ final class WarehouseInventoryRepository
                     COALESCE(SUM(u.actual_qty), 0) - COALESCE(SUM(u.planned_qty), 0) AS variance
              FROM production_usage u
              WHERE $where AND u.production_order IS NOT NULL
-             GROUP BY u.production_order, grp
+             GROUP BY u.production_order
              ORDER BY planned DESC, u.production_order
              LIMIT " . (int) $limit
         );
