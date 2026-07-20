@@ -795,6 +795,16 @@ function pickWarehouse(btn, val) {
     form.elements['warehouse'].value = val;
     form.submit();
 }
+// Auto-apply: changing a date or dropdown filter reloads the data immediately.
+document.querySelectorAll('form.filters').forEach(function (f) {
+    f.querySelectorAll('input[type="date"], select').forEach(function (el) {
+        el.addEventListener('change', function () {
+            var from = f.elements['from_date'], to = f.elements['to_date'];
+            if (el.type === 'date' && from && to && !(from.value && to.value)) return;
+            f.submit();
+        });
+    });
+});
 </script>
 </body>
 </html>
