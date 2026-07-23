@@ -157,3 +157,9 @@ description: Test the KPI Dashboard PHP pages (Overview, Delivery, Warehouse, Cu
 
 ## Devin Secrets Needed
 None for local testing. SAP credentials exist only on the user's LAN box; never needed (or usable) from the VM.
+
+## ETL pull tester (etl_test.php / etl/test_queries.php, PRs #102/#104) specifics
+- `public/etl_test.php` (audit-gated) lists the 13 production pulls from `EtlQueryTester::pulls()` — one Pull dropdown, no source/via inputs. Each pull shows the exact production command; running shows OK (rows/columns/timing + expandable JSON samples) or the exact driver error plus an expandable "SQL fired" OPENQUERY block. It is strictly read-only.
+- On the VM the sources are unreachable, so every pull FAILs with "Source 'PRIMSBM' is not configured" — that IS the expected local behavior and still proves error surfacing. To demo the OK path, temporarily append a MySQL PRIMSBM source to `.env` (copy the local DB_USER/DB_PASS as PRIMSBM_DB_*) plus `ETL_TEST_VIA=false`, and point one pull's query file at a MySQL-compatible SELECT (e.g. `SELECT ... FROM delivery_lines LIMIT 5` — note columns are `posting_date`/`order_qty`, not order_date/ordered_qty). Back up and revert `.env` and the query file afterwards.
+- env-loader quirk: `env()` maps an empty value (`ETL_TEST_VIA=`) to the DEFAULT, so empty cannot disable the OPENQUERY wrap — use `ETL_TEST_VIA=false` (boolean false casts to '').
+- Live validation must happen on the XAMPP box: `http://localhost/Damascus-KPI/public/etl_test.php` or `php etl\test_queries.php --source=PRIMSBM --via=PRODHANA [--only=family]`.
