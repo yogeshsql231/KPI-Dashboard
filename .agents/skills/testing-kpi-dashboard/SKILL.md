@@ -142,6 +142,13 @@ description: Test the KPI Dashboard PHP pages (Overview, Delivery, Warehouse, Cu
 - Procurement has TWO `form.filters` (main + Inventory Days of Supply); the auto-submit block binds both, and each form's hidden/current params must be preserved across the other's submission — assert e.g. `supplier=` stays in the URL after changing `inv_category`.
 - Warehouse's LPN `lpn_status` select already had inline `onchange=submit()`; verify single reload, no double-submit.
 
+## Production usage on Warehouse page (PR #100) specifics
+- The "Estimated vs Actual Production Usage" panel lives on `warehouse.php` (moved off Delivery — its absence there is expected; Stock Stage Tracking also moved to Warehouse, so Delivery has neither). Backed by `WarehouseInventoryRepository::productionUsageSummary/ByGroup/ByOrder/ByItem` over `production_usage` (migration 012, Beas `@BMM_PNMAST`/`@BMM_PNITEM` via `etl/queries/prodhana_production_beas.sql`).
+- Semantics to assert, not flag: "Items Used" counts components with `actual_qty <> 0` (staged-but-untracked items like clarified butter legitimately show actual 0 / −100%); per-order table is ONE row per production order even when components span site groups — the displayed group is the component with the largest planned qty (dominant-group `GROUP_CONCAT ... ORDER BY planned_qty DESC` in `productionUsageByOrder`). The By Warehouse Group table, by contrast, groups per component warehouse, so a mixed-site order's quantities can appear under two groups there while remaining one row per order — that difference is by design.
+- Est. Return/Waste = Material Flow `transfer − issue` and is explicitly labelled an assumption; finished-goods output and SO/PO linkage are not in the cache, so don't expect (or invent) an FG-aware waste figure.
+- Good seed set: batches in NEWARK-RM / CLIFFTON (misspelling must bucket to Clifton) / FG-BROOKLYN / COLD-01, one order with a zero-actual component, and one mixed-site order (largest planned qty in one site) to prove single-row rendering. Seed with `source_system='TEST'` and clean up with `DELETE ... WHERE source_system='TEST'`.
+- SQL-side grouping uses `DeliveryFilters::warehouseGroupCase()` — keep it in sync with the PHP `warehouseGroup()` if group rules ever change.
+
 ## Good adversarial test pattern
 1. Load page with no filters, note baseline totals (e.g. Delivered Qty card).
 2. Apply one filter; assert totals change to a DB-verified value, not just "page loads".
