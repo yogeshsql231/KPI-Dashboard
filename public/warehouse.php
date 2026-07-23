@@ -84,6 +84,13 @@ $packagingRows = [];
 $agedByWarehouse = [];
 $agedOutRows = [];
 $movementFlow = ['receipt' => 0.0, 'transfer' => 0.0, 'issue' => 0.0, 'waste' => 0.0];
+// Stock stage lifecycle strip (moved from the Delivery page).
+$stockStages = [];
+// Estimated vs actual production usage (moved from the Delivery page).
+$prodUsage = null;
+$prodUsageGroups = [];
+$prodUsageOrders = [];
+$prodUsageRows = [];
 // Stockout frequency (SCRUM-93). Needs the daily on-hand snapshot history
 // (migration 014 + etl/pull_stock_snapshot.php); degrades to a hint until then.
 $hasStockout = false;
@@ -137,6 +144,11 @@ try {
     $agedByWarehouse = $inv->agedByWarehouse($filters);
     $agedOutRows = $inv->agedOutRows($filters);
     $movementFlow = $inv->movementFlow($filters);
+    $stockStages = $inv->stockStages($filters);
+    $prodUsage = $inv->productionUsageSummary($filters);
+    $prodUsageGroups = $inv->productionUsageByGroup($filters);
+    $prodUsageOrders = $inv->productionUsageByOrder($filters, 25);
+    $prodUsageRows = $inv->productionUsageByItem($filters, 15);
     $hasStockout = $inv->hasStockSnapshots();
     if ($hasStockout) {
         $stockout = $inv->stockoutFrequency($filters);
@@ -478,6 +490,119 @@ function selectFilter(string $name, string $label, array $options, ?string $curr
                 <div class="flow-arrow">&rarr;</div>
                 <div class="flow-step wst"><div class="fs-k">Waste / Scrap</div><div class="fs-v"><?= num($movementFlow['waste']) ?></div><div class="fs-sub"><?= $waste > 0 ? pct($movementFlow['waste'] / $waste) : '—' ?></div></div>
             </div>
+        <?php endif; ?>
+    </section>
+
+    <section class="panel panel-wide">
+        <h2>Stock Stage Tracking <?= SourceBadge::render('movements') ?></h2>
+        <p class="panel-note">Where stock sits across the lifecycle &mdash; on-hand raw stock and finished goods from the inventory cache (<code>etl/pull_inventory.php</code>); staging, production and waste movements from <code>material_movements</code> over the selected date range.</p>
+        <div class="flow">
+            <div class="flow-step whs"><div class="fs-k">On-Hand Stock</div><div class="fs-v"><?= num($stockStages['on_hand'] ?? null) ?></div><div class="fs-sub">all warehouses</div></div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-step stg"><div class="fs-k">To Staging</div><div class="fs-v"><?= num($stockStages['to_staging'] ?? null) ?></div><div class="fs-sub">transferred</div></div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-step prd"><div class="fs-k">To Production</div><div class="fs-v"><?= num($stockStages['to_production'] ?? null) ?></div><div class="fs-sub">issued</div></div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-step fgd"><div class="fs-k">Finished Goods</div><div class="fs-v"><?= num($stockStages['finished_goods'] ?? null) ?></div><div class="fs-sub">FG warehouses</div></div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-step wst"><div class="fs-k">Returned / Wasted</div><div class="fs-v"><?= num($stockStages['waste'] ?? null) ?></div><div class="fs-sub">waste movements</div></div>
+        </div>
+    </section>
+
+    <section class="panel panel-wide">
+        <h2>Estimated vs Actual Production Usage <?= SourceBadge::render('production') ?></h2>
+        <p class="panel-note">Raw material staged for production per Beas batch: the <strong>expected</strong> (planned) component quantity vs the <strong>actual</strong> quantity consumed, following the date/warehouse filters above. Only tracked components record an actual consumption (e.g. flour); untracked ones (e.g. clarified butter) show the expected side only. Source: <code>production_usage</code> (<code>etl/pull_inventory.php --what=production</code>).</p>
+        <?php if ($prodUsage === null): ?>
+            <p class="empty">No production usage data yet &mdash; run migration <code>012</code> and the production ETL.</p>
+        <?php else: ?>
+            <div class="stats">
+                <div class="stat"><div class="stat-label">Estimated (Planned)</div><div class="stat-value"><?= num($prodUsage['planned']) ?></div><div class="stat-note">planned component qty</div></div>
+                <div class="stat"><div class="stat-label">Actual (Consumed)</div><div class="stat-value"><?= num($prodUsage['actual']) ?></div><div class="stat-note">issued to production</div></div>
+                <?php $vp = $prodUsage['variance_pct']; $vc = $vp === null ? 'neutral' : (abs($vp) <= 0.02 ? 'good' : (abs($vp) <= 0.05 ? 'warn' : 'bad')); ?>
+                <div class="stat <?= $vc ?>"><div class="stat-label">Variance</div><div class="stat-value"><?= $vp === null ? '—' : (($vp > 0 ? '+' : '') . pct($vp, 1)) ?></div><div class="stat-note">actual vs estimate</div></div>
+                <div class="stat"><div class="stat-label">Production Orders</div><div class="stat-value"><?= num($prodUsage['orders']) ?></div><div class="stat-note">in selected range</div></div>
+                <?php if ($hasMovements): ?>
+                <?php $estReturn = $movementFlow['transfer'] - $movementFlow['issue']; ?>
+                <div class="stat neutral"><div class="stat-label">Est. Return / Waste</div><div class="stat-value"><?= ($estReturn > 0 ? '' : '') . num($estReturn) ?></div><div class="stat-note">staged &minus; consumed (assumption)</div></div>
+                <?php endif; ?>
+            </div>
+
+            <h3 class="sub-h">By Warehouse Group</h3>
+            <table>
+                <thead>
+                    <tr><th>Group</th><th class="num">Orders</th><th class="num">Items</th><th class="num">Estimated</th><th class="num">Actual</th><th class="num">Variance</th><th class="num">Variance %</th></tr>
+                </thead>
+                <tbody>
+                <?php foreach ($prodUsageGroups as $r): ?>
+                    <?php $p = (float) $r['planned']; $a = (float) $r['actual']; $v = (float) $r['variance']; ?>
+                    <tr>
+                        <td><?= e($r['grp']) ?></td>
+                        <td class="num"><?= num($r['orders']) ?></td>
+                        <td class="num"><?= num($r['items']) ?></td>
+                        <td class="num"><?= num($p) ?></td>
+                        <td class="num"><?= num($a) ?></td>
+                        <td class="num"><?= ($v > 0 ? '+' : '') . num($v) ?></td>
+                        <td class="num"><?= $p > 0 ? (($v > 0 ? '+' : '') . pct($v / $p, 1)) : '—' ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if ($prodUsageGroups === []): ?>
+                    <tr><td colspan="7" class="empty">No production order lines match the current filters.</td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
+
+            <h3 class="sub-h">By Production Order</h3>
+            <p class="panel-note"><strong>Items Used</strong> counts components with recorded consumption; the rest were staged/estimated only. Top 25 orders by expected quantity in the selected range.</p>
+            <div class="lpn-scroll">
+            <table>
+                <thead>
+                    <tr><th>Production Order</th><th>Date</th><th>Group</th><th class="num">Items</th><th class="num">Items Used</th><th class="num">Expected Qty</th><th class="num">Actual Qty</th><th class="num">Variance</th></tr>
+                </thead>
+                <tbody>
+                <?php foreach ($prodUsageOrders as $r): ?>
+                    <?php $p = (float) $r['planned']; $a = (float) $r['actual']; $v = (float) $r['variance']; ?>
+                    <tr>
+                        <td><?= e($r['production_order']) ?></td>
+                        <td><?= e($r['doc_date']) ?: '<span class="muted">—</span>' ?></td>
+                        <td><?= e($r['grp']) ?></td>
+                        <td class="num"><?= num($r['items']) ?></td>
+                        <td class="num"><?= num($r['items_used']) ?></td>
+                        <td class="num"><?= num($p) ?></td>
+                        <td class="num"><?= num($a) ?></td>
+                        <td class="num"><?= ($v > 0 ? '+' : '') . num($v) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if ($prodUsageOrders === []): ?>
+                    <tr><td colspan="8" class="empty">No production orders match the current filters.</td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
+            </div>
+
+            <h3 class="sub-h">By Component Item</h3>
+            <table>
+                <thead>
+                    <tr><th>Item</th><th>Description</th><th class="num">Orders</th><th class="num">Estimated</th><th class="num">Actual</th><th class="num">Variance</th><th class="num">Variance %</th></tr>
+                </thead>
+                <tbody>
+                <?php foreach ($prodUsageRows as $r): ?>
+                    <?php $p = (float) $r['planned']; $a = (float) $r['actual']; $v = (float) $r['variance']; ?>
+                    <tr>
+                        <td><?= e($r['item_code']) ?></td>
+                        <td><?= e($r['item_description'] ?? '') ?></td>
+                        <td class="num"><?= num($r['orders']) ?></td>
+                        <td class="num"><?= num($p) ?></td>
+                        <td class="num"><?= num($a) ?></td>
+                        <td class="num"><?= ($v > 0 ? '+' : '') . num($v) ?></td>
+                        <td class="num"><?= $p > 0 ? (($v > 0 ? '+' : '') . pct($v / $p, 1)) : '—' ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if ($prodUsageRows === []): ?>
+                    <tr><td colspan="7" class="empty">No production order lines match the current filters.</td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
+            <p class="panel-note"><strong>Assumption (to confirm):</strong> waste = issued to staging &minus; (production consumed + finished-goods output). Finished-goods output and the sales-order / customer-PO link per batch are not in the cache yet &mdash; once the Beas batch header fields are confirmed, this panel can break results down by unique SO/PO.</p>
         <?php endif; ?>
     </section>
 
