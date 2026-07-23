@@ -136,6 +136,12 @@ description: Test the KPI Dashboard PHP pages (Overview, Delivery, Warehouse, Cu
 - Default dates are computed from the VM's system date, which may be ahead of the seeded data window — set explicit dates covering the seed (e.g. 2026-07-01..04) before asserting non-empty widgets.
 - Chrome native date inputs can mangle typed years (e.g. `275760-07-12`) — after typing, verify the input value in the DOM/URL; a blank `to_date` behaves as open-ended, which can silently still pass a "data appears" check. Prefer navigating with explicit query-string URLs when a precise range matters.
 
+## Auto-apply filters (PR #99) specifics
+- All dashboard pages (Delivery, Warehouse, CS, Procurement) auto-submit `form.filters` on date/select `change` — the adversarial test is to NEVER click Apply: change a select (Carrier, SO Status, Supplier, inv_category, inv_warehouse) and assert the URL gains the param and totals change. If nothing reloads without Apply, auto-apply is broken.
+- Date auto-submit only fires when both dates are set and ≥ 1900-01-01 (guards mid-typing partial years like `0002`). Chrome's segmented date input can still transiently produce odd years (e.g. `7022`) when typing over an existing date; use the calendar picker or arrow keys (Up/Down on a segment fires one clean change event) for reliable automation.
+- Procurement has TWO `form.filters` (main + Inventory Days of Supply); the auto-submit block binds both, and each form's hidden/current params must be preserved across the other's submission — assert e.g. `supplier=` stays in the URL after changing `inv_category`.
+- Warehouse's LPN `lpn_status` select already had inline `onchange=submit()`; verify single reload, no double-submit.
+
 ## Good adversarial test pattern
 1. Load page with no filters, note baseline totals (e.g. Delivered Qty card).
 2. Apply one filter; assert totals change to a DB-verified value, not just "page loads".
