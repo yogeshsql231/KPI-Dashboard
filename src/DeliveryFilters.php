@@ -181,6 +181,18 @@ final class DeliveryFilters
     }
 
     /**
+     * SQL twin of warehouseGroup(): a CASE expression bucketing a warehouse
+     * column into the Newark/Clifton/Brooklyn/Others site groups.
+     */
+    public static function warehouseGroupCase(string $column): string
+    {
+        return "CASE WHEN LOWER($column) LIKE '%newark%' THEN 'Newark'"
+            . " WHEN LOWER($column) LIKE '%clifton%' OR LOWER($column) LIKE '%cliffton%' THEN 'Clifton'"
+            . " WHEN LOWER($column) LIKE '%brooklyn%' THEN 'Brooklyn'"
+            . " ELSE 'Others' END";
+    }
+
+    /**
      * Keep the date range in chronological order. If both ends are supplied
      * and the user entered them backwards (from later than to), swap them so
      * the "from <= posting_date <= to" clause still selects the intended

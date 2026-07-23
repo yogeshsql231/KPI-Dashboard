@@ -545,6 +545,70 @@ final class WarehouseInventoryRepository
         return $stmt->fetchAll();
     }
 
+    /**
+     * Planned vs actual production consumption bucketed by warehouse site
+     * group (Newark/Clifton/Brooklyn/Others).
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function productionUsageByGroup(DeliveryFilters $f): array
+    {
+        if (!$this->hasProductionUsage()) {
+            return [];
+        }
+        [$where, $params] = $this->usageClause($f);
+        $grp = DeliveryFilters::warehouseGroupCase("COALESCE(u.warehouse, '')");
+        $stmt = $this->pdo->prepare(
+            "SELECT $grp AS grp,
+                    COUNT(DISTINCT u.production_order)   AS orders,
+                    COUNT(DISTINCT u.item_code)          AS items,
+                    COALESCE(SUM(u.planned_qty), 0)      AS planned,
+                    COALESCE(SUM(u.actual_qty), 0)       AS actual,
+                    COALESCE(SUM(u.actual_qty), 0) - COALESCE(SUM(u.planned_qty), 0) AS variance
+             FROM production_usage u
+             WHERE $where
+             GROUP BY grp
+             ORDER BY FIELD(grp, 'Newark', 'Clifton', 'Brooklyn', 'Others')"
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Per production order (Beas batch): expected (planned) component qty
+     * issued to staging vs what was actually consumed. Only tracked
+     * components record an actual qty, so orders with actual = 0 show the
+     * expected side only. One row per order; the site group shown is that of
+     * the component with the largest planned qty. Largest expected qty first.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function productionUsageByOrder(DeliveryFilters $f, int $limit = 25): array
+    {
+        if (!$this->hasProductionUsage()) {
+            return [];
+        }
+        [$where, $params] = $this->usageClause($f);
+        $grp = DeliveryFilters::warehouseGroupCase("COALESCE(u.warehouse, '')");
+        $stmt = $this->pdo->prepare(
+            "SELECT u.production_order,
+                    MIN(u.doc_date)                      AS doc_date,
+                    SUBSTRING_INDEX(GROUP_CONCAT($grp ORDER BY COALESCE(u.planned_qty, 0) DESC SEPARATOR ','), ',', 1) AS grp,
+                    COUNT(DISTINCT u.item_code)          AS items,
+                    COUNT(DISTINCT CASE WHEN COALESCE(u.actual_qty, 0) <> 0 THEN u.item_code END) AS items_used,
+                    COALESCE(SUM(u.planned_qty), 0)      AS planned,
+                    COALESCE(SUM(u.actual_qty), 0)       AS actual,
+                    COALESCE(SUM(u.actual_qty), 0) - COALESCE(SUM(u.planned_qty), 0) AS variance
+             FROM production_usage u
+             WHERE $where AND u.production_order IS NOT NULL
+             GROUP BY u.production_order
+             ORDER BY planned DESC, u.production_order
+             LIMIT " . (int) $limit
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
     // ---- Stockout frequency (SCRUM-93) --------------------------------------
 
     /** Whether migration 014 (daily on-hand snapshots) has been loaded. */
