@@ -3,12 +3,13 @@
 declare(strict_types=1);
 
 /**
- * ETL query tester — runs the source SQL behind each pull (delivery,
- * inventory, LPN, payments, PO, shipments, stock snapshot, ...) read-only
- * against the configured source and shows OK (columns, sample rows, timing)
- * or the exact driver error, to pinpoint which query a failing ETL run is
- * choking on. Must run where the sources are reachable (the XAMPP box).
- * CLI twin: php etl/test_queries.php --source=PRIMSBM [--via=PRODHANA]
+ * ETL pull tester — runs the exact SQL each ETL pull fires in production
+ * (pull_delivery, pull_inventory --what=..., pull_lpn, pull_po, pull_payments,
+ * pull_shipments, pull_stock_snapshot, ...) read-only against the source and
+ * shows OK (columns, sample rows, timing) or the exact driver error, so a
+ * failing pull can be pinpointed to its query. Must run where the sources are
+ * reachable (the XAMPP box). Nothing is ever written to the cache or SAP.
+ * CLI twin: php etl/test_queries.php --source=PRIMSBM --via=PRODHANA
  */
 
 require_once __DIR__ . '/../config/config.php';
@@ -23,29 +24,24 @@ function e(mixed $v): string
     return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
 }
 
-$catalog = EtlQueryTester::catalog();
+$pulls = EtlQueryTester::pulls();
 
-$source = strtoupper(trim((string) ($_GET['source'] ?? 'PRIMSBM')));
-if (!preg_match('/^[A-Z0-9_]+$/', $source)) {
-    $source = 'PRIMSBM';
-}
-$via = trim((string) ($_GET['via'] ?? ''));
-if ($via !== '' && !preg_match('/^[A-Za-z0-9_.\\\\-]+$/', $via)) {
-    $via = '';
-}
-$pick = (string) ($_GET['q'] ?? '');
+$pick = (string) ($_GET['pull'] ?? '');
 $run = isset($_GET['run']);
-
-// With a linked server the prodhana_* set is what runs; otherwise the
-// queries written for the source itself.
-$prefix = $via !== '' ? 'prodhana_' : strtolower($source) . '_';
-$testable = array_filter($catalog, static fn(string $n): bool => str_starts_with($n, $prefix), ARRAY_FILTER_USE_KEY);
 
 $results = [];
 if ($run) {
-    $toRun = ($pick !== '' && isset($testable[$pick])) ? [$pick => $testable[$pick]] : $testable;
-    foreach ($toRun as $name => $file) {
-        $results[] = EtlQueryTester::run($name, $file, $source, $via);
+    $toRun = ($pick !== '' && isset($pulls[$pick])) ? [$pick => $pulls[$pick]] : $pulls;
+    foreach ($toRun as $label => $p) {
+        $r = EtlQueryTester::run($label, $p['query'], $p['source'], $p['via']);
+        $r['command'] = $p['command'];
+        $r['query_file'] = 'etl/queries/' . basename($p['query']);
+        try {
+            $r['sql'] = EtlQueryTester::buildSql($p['query'], $p['via']);
+        } catch (Throwable) {
+            $r['sql'] = '';
+        }
+        $results[] = $r;
     }
 }
 ?>
@@ -54,13 +50,13 @@ if ($run) {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>KPI Dashboard · ETL Query Tester</title>
+    <title>KPI Dashboard · ETL Pull Tester</title>
     <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
 <header class="topbar">
     <div class="brand">KPI Dashboard</div>
-    <div class="subtitle">ETL Query Tester</div>
+    <div class="subtitle">ETL Pull Tester</div>
     <nav class="topnav">
         <?php foreach (Auth::allowedPages() as $navInfo): ?>
         <a href="<?= e($navInfo['page']) ?>"><?= e($navInfo['label']) ?></a>
@@ -69,35 +65,33 @@ if ($run) {
 </header>
 <main>
     <section class="panel panel-wide">
-        <h2>Test the ETL source queries</h2>
-        <p class="panel-note">Runs the SQL behind each pull <strong>read-only</strong> against the source (nothing is written) and shows the columns, a few sample rows and timing — or the exact driver error — so a failing <code>pull_delivery</code> / <code>pull_inventory</code> / <code>pull_lpn</code> run can be pinpointed to its query. Run this on the box that can reach the source (XAMPP). CLI twin: <code>php etl/test_queries.php --source=PRIMSBM --via=PRODHANA</code>.</p>
+        <h2>Test the ETL pulls</h2>
+        <p class="panel-note">Runs the exact SQL each pull fires in production <strong>read-only</strong> (nothing is written — only a few sample rows are fetched) and shows the columns, sample rows and timing, or the exact driver error, so a failing <code>pull_delivery</code> / <code>pull_inventory</code> / <code>pull_lpn</code> run can be pinpointed to its query. Run this on the box that can reach the source (XAMPP).</p>
         <form method="get" class="filters">
             <div class="filter">
-                <label for="source">Source</label>
-                <input id="source" name="source" type="text" value="<?= e($source) ?>">
-            </div>
-            <div class="filter">
-                <label for="via">Linked server (--via)</label>
-                <input id="via" name="via" type="text" value="<?= e($via) ?>" placeholder="e.g. PRODHANA">
-            </div>
-            <div class="filter">
-                <label for="q">Query</label>
-                <select id="q" name="q">
-                    <option value="">All (<?= count($testable) ?>)</option>
-                    <?php foreach (array_keys($testable) as $name): ?>
-                    <option value="<?= e($name) ?>"<?= $pick === $name ? ' selected' : '' ?>><?= e($name) ?></option>
+                <label for="pull">Pull</label>
+                <select id="pull" name="pull">
+                    <option value="">All (<?= count($pulls) ?>)</option>
+                    <?php foreach (array_keys($pulls) as $label): ?>
+                    <option value="<?= e($label) ?>"<?= $pick === $label ? ' selected' : '' ?>><?= e($label) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
             <button type="submit" name="run" value="1">Run tests</button>
         </form>
-        <?php if ($run): ?>
         <table>
-            <thead><tr><th>Query</th><th>Status</th><th class="num">Rows fetched</th><th class="num">Columns</th><th class="num">Time (s)</th><th>Error / sample</th></tr></thead>
+            <thead><tr><th>Pull</th><th>Command / query</th><?php if ($run): ?><th>Status</th><th class="num">Rows fetched</th><th class="num">Columns</th><th class="num">Time (s)</th><th>Error / sample</th><?php endif; ?></tr></thead>
             <tbody>
-            <?php foreach ($results as $r): ?>
+            <?php if ($run): ?>
+                <?php foreach ($results as $r): ?>
                 <tr>
-                    <td><code><?= e($r['name']) ?></code></td>
+                    <td><strong><?= e($r['name']) ?></strong></td>
+                    <td>
+                        <code><?= e($r['command']) ?></code>
+                        <?php if ($r['sql'] !== ''): ?>
+                        <details><summary>SQL fired</summary><pre style="white-space:pre-wrap"><?= e($r['sql']) ?></pre></details>
+                        <?php endif; ?>
+                    </td>
                     <td><?= $r['ok'] ? '<span class="good">OK</span>' : '<span class="bad">FAIL</span>' ?></td>
                     <td class="num"><?= number_format($r['rows_fetched']) ?><?= $r['truncated'] ? '+' : '' ?></td>
                     <td class="num"><?= count($r['columns']) ?></td>
@@ -119,13 +113,17 @@ if ($run) {
                         <?php endif; ?>
                     </td>
                 </tr>
-            <?php endforeach; ?>
-            <?php if ($results === []): ?>
-                <tr><td colspan="6" class="empty">No queries matched (prefix <code><?= e($prefix) ?>*</code>).</td></tr>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <?php foreach ($pulls as $label => $p): ?>
+                <tr>
+                    <td><strong><?= e($label) ?></strong></td>
+                    <td><code><?= e($p['command']) ?></code></td>
+                </tr>
+                <?php endforeach; ?>
             <?php endif; ?>
             </tbody>
         </table>
-        <?php endif; ?>
     </section>
 </main>
 </body>

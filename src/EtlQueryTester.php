@@ -20,6 +20,52 @@ final class EtlQueryTester
     }
 
     /**
+     * The ETL pulls as they run in production (XAMPP box): each pull's script,
+     * the query file it uses, and the source / linked-server it goes through.
+     * Overridable via env: ETL_TEST_SOURCE (default PRIMSBM) and ETL_TEST_VIA
+     * (default PRODHANA; set empty to disable OPENQUERY wrapping).
+     *
+     * @return array<string, array{script:string,query:string,source:string,via:string,command:string}>
+     */
+    public static function pulls(): array
+    {
+        $source = strtoupper((string) env('ETL_TEST_SOURCE', 'PRIMSBM'));
+        $via = (string) env('ETL_TEST_VIA', 'PRODHANA');
+        $dir = dirname(__DIR__) . '/etl/queries';
+        $defs = [
+            'Delivery / OMS orders' => ['pull_delivery.php', 'prodhana_delivery.sql', ''],
+            'A/R payments' => ['pull_payments.php', 'prodhana_payments.sql', ''],
+            'Purchase orders' => ['pull_po.php', 'prodhana_po.sql', ''],
+            'Shipments' => ['pull_shipments.php', 'prodhana_shipments.sql', ''],
+            'LPN pallets' => ['pull_lpn.php', 'prodhana_lpn.sql', ''],
+            'Inventory — stock on hand' => ['pull_inventory.php', 'prodhana_stock.sql', '--what=stock'],
+            'Inventory — packaging' => ['pull_inventory.php', 'prodhana_packaging.sql', '--what=packaging'],
+            'Inventory — batches' => ['pull_inventory.php', 'prodhana_batches.sql', '--what=batches'],
+            'Inventory — material movements' => ['pull_inventory.php', 'prodhana_movements.sql', '--what=movements'],
+            'Production usage (Beas)' => ['pull_inventory.php', 'prodhana_production_beas.sql', '--what=production'],
+            'Inventory supply (days of supply)' => ['pull_inventory_supply.php', 'prodhana_inventory_supply.sql', ''],
+            'Stock snapshot' => ['pull_stock_snapshot.php', 'prodhana_stock_snapshot.sql', ''],
+            'Silo / batch readings' => ['pull_readings.php', 'primsbm_readings.sql', ''],
+        ];
+        $out = [];
+        foreach ($defs as $label => [$script, $queryFile, $extra]) {
+            $usesVia = str_starts_with($queryFile, 'prodhana_') ? $via : '';
+            $out[$label] = [
+                'script' => $script,
+                'query' => $dir . '/' . $queryFile,
+                'source' => $source,
+                'via' => $usesVia,
+                'command' => 'php etl\\' . $script
+                    . ($extra !== '' ? ' ' . $extra : '')
+                    . ' --source=' . $source
+                    . ' --query=etl\\queries\\' . $queryFile
+                    . ($usesVia !== '' ? ' --via=' . $usesVia : ''),
+            ];
+        }
+        return $out;
+    }
+
+    /**
      * List the testable query files, keyed by short name (file name without
      * extension), e.g. 'prodhana_delivery' => '/abs/path/prodhana_delivery.sql'.
      *
