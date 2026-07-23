@@ -24,10 +24,38 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../src/Response.php';
 require_once __DIR__ . '/../src/Validator.php';
 
-// --- CORS / security headers (adjust the allowed origin for production) ---
+// --- Security headers ---
 header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: DENY');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+header('Cache-Control: no-store');
+
+// CORS: only allow the configured origin; deny all others.
+$allowedOrigin = (string) env('CORS_ORIGIN', '');
+if ($allowedOrigin !== '') {
+    $requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
+    if ($requestOrigin === $allowedOrigin) {
+        header('Access-Control-Allow-Origin: ' . $allowedOrigin);
+        header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+        header('Access-Control-Allow-Headers: Content-Type, X-API-Key');
+        header('Access-Control-Max-Age: 86400');
+    }
+    // Handle preflight
+    if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
+        http_response_code(204);
+        exit;
+    }
+}
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+
+// Block the request early when the API key guard is mandatory.
+// The API_KEY env var MUST be set in staging/production.
+$appEnv = (string) env('APP_ENV', 'production');
+if ($appEnv !== 'local' && ((string) env('API_KEY', '') === '')) {
+    error_log('[api/shipments] CRITICAL: API_KEY is not configured in a non-local environment.');
+    Response::error('Server misconfiguration.', 500);
+}
 
 try {
     $pdo = Database::connection();
@@ -37,9 +65,11 @@ try {
 
 switch ($method) {
     case 'GET':
+        requireApiKey();
         handleGet($pdo);
         break;
     case 'POST':
+        requireApiKey();
         handlePost($pdo);
         break;
     default:
@@ -74,8 +104,6 @@ function handleGet(PDO $pdo): never
  */
 function handlePost(PDO $pdo): never
 {
-    requireApiKey();
-
     // Read and decode the JSON body.
     $raw = file_get_contents('php://input') ?: '';
     $data = json_decode($raw, true);
@@ -149,16 +177,21 @@ function handlePost(PDO $pdo): never
 }
 
 /**
- * Optional shared-secret guard for write operations.
+ * Shared-secret guard. Skips only when APP_ENV=local AND API_KEY is blank.
  */
 function requireApiKey(): void
 {
-    $expected = env('API_KEY');
-    if ($expected === null || $expected === '') {
-        return; // disabled (local dev)
+    $expected = (string) env('API_KEY', '');
+    if ($expected === '') {
+        $appEnv = (string) env('APP_ENV', 'production');
+        if ($appEnv === 'local') {
+            return; // local dev — no key configured
+        }
+        // Non-local with no key is blocked earlier, but guard defensively.
+        Response::error('Unauthorized.', 401);
     }
     $provided = $_SERVER['HTTP_X_API_KEY'] ?? '';
-    if (!is_string($provided) || !hash_equals((string) $expected, $provided)) {
+    if (!is_string($provided) || $provided === '' || !hash_equals($expected, $provided)) {
         Response::error('Unauthorized.', 401);
     }
 }

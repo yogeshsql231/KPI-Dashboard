@@ -22,6 +22,12 @@ require_once __DIR__ . '/../src/SourceBadge.php';
 Auth::requireDepartment('delivery');
 $canSeeFinancials = Auth::isCLevel();
 
+// Security headers.
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: DENY');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+header("Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self'");
+
 /** HTML-escape helper. */
 function e(mixed $v): string
 {

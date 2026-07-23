@@ -79,7 +79,7 @@ final class SourceDb
             $pdo = new PDO($dsn, $user, $pass, $options);
         } catch (PDOException $e) {
             error_log("[SourceDb:$prefix] connection failed: " . $e->getMessage());
-            throw new RuntimeException("Source '$prefix' connection failed: " . $e->getMessage(), 0, $e);
+            throw new RuntimeException("Source '$prefix' connection failed.", 0, $e);
         }
 
         self::$pool[$prefix] = $pdo;
