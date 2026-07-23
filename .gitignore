@@ -10,6 +10,7 @@ composer.lock
 *.log
 /logs/
 /cache/
+/.phpunit.cache/
 
 # OS / editor
 .DS_Store
